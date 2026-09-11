@@ -1,0 +1,58 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: rentease-postgres-prod
+    restart: always
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - rentease_prod_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - rentease-prod-network
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: rentease-server-prod
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-http://localhost}
+      NODE_ENV: production
+    networks:
+      - rentease-prod-network
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.prod
+    container_name: rentease-client-prod
+    restart: always
+    ports:
+      - '80:80'
+    depends_on:
+      - server
+    networks:
+      - rentease-prod-network
+
+volumes:
+  rentease_prod_postgres_data:
+
+networks:
+  rentease-prod-network:
+    driver: bridge

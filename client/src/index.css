@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-maroon-900: #4A0F22;
+  --color-maroon-700: #6E1731;
+  --color-maroon-600: #7F1B39;
+  --color-gold-500: #B9924A;
+  --color-gold-300: #D9BE8C;
+  --color-sand-100: #F4EFE4;
+  --color-sand-050: #FBF9F3;
+  --color-ink-900: #221E1C;
+  --color-ink-600: #5B534C;
+  --color-ink-400: #8B8279;
+  --color-line: #E4DCCB;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F4EFE4;
+}
+::-webkit-scrollbar-thumb {
+  background: #D9BE8C;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #B9924A;
+}
+
+/* Universal Poppins enforcement across ALL elements, fonts, inputs, buttons, and headings */
+*, *::before, *::after {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+body {
+  margin: 0;
+  font-family: 'Poppins', sans-serif !important;
+  background-color: #FBF9F3;
+  color: #221E1C;
+  letter-spacing: -0.01em;
+}
+
+[dir="rtl"] body, [dir="rtl"], [dir="rtl"] * {
+  font-family: 'Readex Pro', 'Poppins', sans-serif !important;
+}
+
+/* Poppins for headings, numbers, monospaced text, and UI components */
+h1, h2, h3, h4, h5, h6, .font-fraunces, .font-serif, .font-mono, .font-sans, .kpi-number, button, input, textarea, select, table, th, td {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+/* 3px context-tied solid accent edges */
+.accent-edge-gold {
+  border-left: 3px solid #B9924A;
+}
+[dir="rtl"] .accent-edge-gold {
+  border-left: none;
+  border-right: 3px solid #B9924A;
+}
+
+.accent-edge-green {
+  border-left: 3px solid #3F7A5C;
+}
+[dir="rtl"] .accent-edge-green {
+  border-left: none;
+  border-right: 3px solid #3F7A5C;
+}
+
+.accent-edge-amber {
+  border-left: 3px solid #A9711C;
+}
+[dir="rtl"] .accent-edge-amber {
+  border-left: none;
+  border-right: 3px solid #A9711C;
+}
+
+.accent-edge-maroon {
+  border-left: 3px solid #6E1731;
+}
+[dir="rtl"] .accent-edge-maroon {
+  border-left: none;
+  border-right: 3px solid #6E1731;
+}
+
+/* Subtle staggered load animations */
+@keyframes fadeInSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 160ms; }
+
+/* Micro-transitions */
+.hover-subtle {
+  transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}

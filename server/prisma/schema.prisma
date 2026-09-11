@@ -1,0 +1,710 @@
+// RentEase v2 Prisma Schema
+// Gap-Audited, complete RBAC, dynamic custom items, billing, renewals, documents, notifications & audit logging
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// 1. Subscription & Agency Multi-Tenancy
+// -------------------------------------------------------------
+
+model SubscriptionPlan {
+  id        String   @id @default(uuid())
+  name      String   // "Freemium" | "Starter" | "Agency" | "Enterprise"
+  priceQar  Decimal
+  unitLimit Int
+  agencies  Agency[]
+
+  @@map("subscription_plans")
+}
+
+enum BillingStatus {
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+}
+
+model Agency {
+  id                String           @id @default(uuid())
+  name              String
+  logoUrl           String?
+  tradeLicense      String?          // e.g. "CR 104829/QA"
+  taxNumber         String?          // e.g. "BLD-99201-DHA"
+  address           String?
+  planId            String
+  plan              SubscriptionPlan @relation(fields: [planId], references: [id])
+  unitLimit         Int              @default(5)
+  billingStatus     BillingStatus    @default(ACTIVE)
+  currentPeriodEnd  DateTime?
+  cancelAtPeriodEnd Boolean          @default(false)
+  createdAt         DateTime         @default(now())
+
+  users             User[]
+  roles             Role[]
+  properties        Property[]
+  tenants           Tenant[]
+  vendors           Vendor[]
+  listTypes         ListType[]
+  auditLogs         AuditLog[]
+  notifications     Notification[]
+  ownerPayouts      OwnerPayout[]
+  communicationLogs CommunicationLog[]
+  invoices          Invoice[]
+  paymentMethods    PaymentMethod[]
+  notifTemplates    NotificationTemplate[]
+  integrations      Integration[]
+
+  @@map("agencies")
+}
+
+// -------------------------------------------------------------
+// 2. Role-Based Access Control (RBAC) & Users
+// -------------------------------------------------------------
+
+model Role {
+  id           String   @id @default(uuid())
+  agencyId     String?  // null = system default role template
+  agency       Agency?  @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name         String   // "Owner", "Admin", "Property Manager", "Accountant", "Maintenance Coordinator", "Viewer", custom
+  isSystemRole Boolean  @default(false)
+  permissions  Json     // { properties: {view,create,edit,delete}, tenants: {...}, ... }
+  users        User[]
+
+  @@index([agencyId])
+  @@map("roles")
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+model User {
+  id           String     @id @default(uuid())
+  agencyId     String
+  agency       Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  roleId       String
+  role         Role       @relation(fields: [roleId], references: [id])
+  name         String
+  email        String     @unique
+  passwordHash String?
+  status       UserStatus @default(INVITED)
+  invitedAt        DateTime   @default(now())
+  lastLoginAt      DateTime?
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  @@index([agencyId])
+  @@index([roleId])
+  @@map("users")
+}
+
+// -------------------------------------------------------------
+// 3. Dynamic Lists & Custom Dropdown Items
+// -------------------------------------------------------------
+
+model ListType {
+  id       String     @id @default(uuid())
+  agencyId String?    // null = global default list definition
+  agency   Agency?    @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  key      String     // "unit_type" | "maintenance_category" | "vendor_specialty" | "payment_method" | "amenity" | "lease_type" | "document_type" | "expense_category" | "nationality"
+  label    String     // display name shown in Settings
+  items    ListItem[]
+
+  @@unique([agencyId, key])
+  @@index([agencyId])
+  @@map("list_types")
+}
+
+model ListItem {
+  id          String   @id @default(uuid())
+  listTypeId  String
+  listType    ListType @relation(fields: [listTypeId], references: [id], onDelete: Cascade)
+  value       String   // machine value
+  label       String   // display label
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([listTypeId])
+  @@map("list_items")
+}
+
+// -------------------------------------------------------------
+// 4. Core Domain: Properties & Units
+// -------------------------------------------------------------
+
+model Property {
+  id              String        @id @default(uuid())
+  agencyId        String
+  agency          Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name            String
+  area            String        // e.g. "The Pearl", "Lusail", "West Bay", "Msheireb"
+  address         String
+  zoneNumber      String?       @default("66")
+  streetNumber    String?       @default("840")
+  buildingNumber  String?       @default("12")
+  pinNumber       String?       @default("23049102")
+  kahramaaMeter   String?       @default("KM-882910-DHA")
+  ownerName       String?       @default("Sheikh Khalid Bin Hamad Al-Thani")
+  ownerPhone      String?       @default("+974 5512 8899")
+  ownerIban       String?       @default("QA55QNBA0000000012345678")
+  totalFloors     Int?          @default(10)
+  createdAt       DateTime      @default(now())
+
+  units           Unit[]
+  expenses        Expense[]
+  payouts         OwnerPayout[]
+
+  @@index([agencyId])
+  @@map("properties")
+}
+
+enum UnitStatus {
+  VACANT
+  OCCUPIED
+  MAINTENANCE
+}
+
+model Unit {
+  id                  String               @id @default(uuid())
+  propertyId          String
+  property            Property             @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  unitNumber          String
+  floor               Int?
+  bedrooms            Int                  @default(2)
+  bathrooms           Int                  @default(2)
+  sizeSqm             Decimal              @default(110.0)
+  unitTypeId          String               // FK -> ListItem (key = "unit_type")
+  status              UnitStatus           @default(VACANT)
+
+  leases              Lease[]
+  maintenanceRequests MaintenanceRequest[]
+  inspections         Inspection[]
+
+  @@index([propertyId])
+  @@map("units")
+}
+
+// -------------------------------------------------------------
+// 5. Tenants, Leases & Renewals
+// -------------------------------------------------------------
+
+model Tenant {
+  id                    String               @id @default(uuid())
+  agencyId              String
+  agency                Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name                  String
+  email                 String
+  phone                 String
+  nationalityListItemId String?              // FK -> ListItem (key = "nationality")
+  createdAt             DateTime             @default(now())
+
+  leases                Lease[]
+  maintenanceRequests   MaintenanceRequest[]
+  documents             Document[]
+
+  @@index([agencyId])
+  @@map("tenants")
+}
+
+enum LeaseStatus {
+  ACTIVE
+  EXPIRED
+  RENEWAL_PENDING
+  TERMINATED
+}
+
+model Lease {
+  id                  String                @id @default(uuid())
+  unitId              String
+  unit                Unit                  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tenantId            String
+  tenant              Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leaseTypeListItemId String?               // FK -> ListItem (key = "lease_type")
+  startDate           DateTime
+  endDate             DateTime
+  rentAmount          Decimal
+  status              LeaseStatus           @default(ACTIVE)
+  createdAt           DateTime              @default(now())
+
+  payments            Payment[]
+  renewalRequests     RenewalRequest[]
+  documents           Document[]
+  cheques             Cheque[]
+  tawtheeq            TawtheeqRegistration?
+  inspections         Inspection[]
+
+  @@index([unitId])
+  @@index([tenantId])
+  @@map("leases")
+}
+
+enum RenewalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model RenewalRequest {
+  id                 String        @id @default(uuid())
+  leaseId            String
+  lease              Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  proposedRentAmount Decimal
+  proposedEndDate    DateTime
+  status             RenewalStatus @default(PENDING)
+  requestedById      String
+  approvedById       String?
+  createdAt          DateTime      @default(now())
+
+  @@index([leaseId])
+  @@map("renewal_requests")
+}
+
+// -------------------------------------------------------------
+// 6. Payments & Financial Transactions
+// -------------------------------------------------------------
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  leaseId          String
+  lease            Lease         @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  amount           Decimal
+  dueDate          DateTime
+  paidDate         DateTime?
+  status           PaymentStatus @default(PENDING)
+  methodListItemId String?       // FK -> ListItem (key = "payment_method")
+  createdAt        DateTime      @default(now())
+
+  @@index([leaseId])
+  @@map("payments")
+}
+
+// -------------------------------------------------------------
+// 7. Vendors & Maintenance Operations
+// -------------------------------------------------------------
+
+model Vendor {
+  id                  String               @id @default(uuid())
+  agencyId            String
+  agency              Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  name                String
+  phone               String
+  specialtyListItemId String               // FK -> ListItem (key = "vendor_specialty")
+  rating              Decimal?
+  isActive            Boolean              @default(true)
+
+  maintenanceRequests MaintenanceRequest[]
+
+  @@index([agencyId])
+  @@map("vendors")
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ReqStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+}
+
+model MaintenanceRequest {
+  id                 String     @id @default(uuid())
+  unitId             String
+  unit               Unit       @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  tenantId           String
+  tenant             Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  categoryListItemId String?    // FK -> ListItem (key = "maintenance_category")
+  title              String
+  description        String
+  priority           Priority   @default(MEDIUM)
+  status             ReqStatus  @default(OPEN)
+  vendorId           String?
+  vendor             Vendor?    @relation(fields: [vendorId], references: [id], onDelete: SetNull)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  documents          Document[]
+
+  @@index([unitId])
+  @@index([tenantId])
+  @@index([vendorId])
+  @@map("maintenance_requests")
+}
+
+// -------------------------------------------------------------
+// 8. Expenses
+// -------------------------------------------------------------
+
+model Expense {
+  id                 String   @id @default(uuid())
+  propertyId         String
+  property           Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  categoryListItemId String?  // FK -> ListItem (key = "expense_category")
+  amount             Decimal
+  incurredOn         DateTime
+  note               String?
+  createdAt          DateTime @default(now())
+
+  @@index([propertyId])
+  @@map("expenses")
+}
+
+// -------------------------------------------------------------
+// 9. Document Attachments
+// -------------------------------------------------------------
+
+model Document {
+  id                     String              @id @default(uuid())
+  fileUrl                String
+  fileName               String
+  documentTypeListItemId String?             // FK -> ListItem (key = "document_type")
+  tenantId               String?
+  tenant                 Tenant?             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leaseId                String?
+  lease                  Lease?              @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  maintenanceRequestId   String?
+  maintenanceRequest     MaintenanceRequest? @relation(fields: [maintenanceRequestId], references: [id], onDelete: Cascade)
+  uploadedAt             DateTime            @default(now())
+
+  @@index([tenantId])
+  @@index([leaseId])
+  @@index([maintenanceRequestId])
+  @@map("documents")
+}
+
+// -------------------------------------------------------------
+// 10. In-App Notifications & Audit Trail
+// -------------------------------------------------------------
+
+model Notification {
+  id         String   @id @default(uuid())
+  agencyId   String
+  agency     Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  userId     String?
+  type       String   // "renewal_due" | "payment_overdue" | "maintenance_assigned" | ...
+  message    String
+  isRead     Boolean  @default(false)
+  channel    NotifChannel?
+  templateId String?
+  createdAt  DateTime @default(now())
+
+  @@index([agencyId])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  agencyId   String
+  agency     Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  userId     String
+  action     String   // "tenant.create" | "lease.update" | "user.role_change" | ...
+  entityType String
+  entityId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([agencyId])
+  @@map("audit_logs")
+}
+
+
+// -------------------------------------------------------------
+// 11. Post-Dated Cheques (PDC) Vault & Clearing
+// -------------------------------------------------------------
+
+enum ChequeStatus {
+  PENDING
+  IN_VAULT
+  DEPOSITED
+  CLEARED
+  BOUNCED
+  HELD
+  REPLACED
+  RETURNED
+}
+
+model Cheque {
+  id            String       @id @default(uuid())
+  leaseId       String
+  lease         Lease        @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  chequeNumber  String
+  bankName      String
+  drawerName    String
+  amount        Decimal
+  dueDate       DateTime
+  status        ChequeStatus @default(PENDING)
+  vaultLocation String?
+  depositDate   DateTime?
+  clearedDate   DateTime?
+  bouncedDate   DateTime?
+  bounceReason  String?
+  notes         String?
+  createdAt     DateTime     @default(now())
+
+  @@index([leaseId])
+  @@index([status])
+  @@map("cheques")
+}
+
+// -------------------------------------------------------------
+// 12. Qatar Tawtheeq (MOJ) Lease Registrations
+// -------------------------------------------------------------
+
+enum TawtheeqStatus {
+  DRAFT
+  SUBMITTED
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+model TawtheeqRegistration {
+  id                 String         @id @default(uuid())
+  leaseId            String         @unique
+  lease              Lease          @relation(fields: [leaseId], references: [id], onDelete: Cascade)
+  registrationNumber String         @unique
+  status             TawtheeqStatus @default(DRAFT)
+  contractDate       DateTime
+  expiryDate         DateTime
+  municipalityFee    Decimal        @default(0)
+  certificateUrl     String?
+  registeredAt       DateTime       @default(now())
+  createdAt          DateTime       @default(now())
+
+  @@map("tawtheeq_registrations")
+}
+
+// -------------------------------------------------------------
+// 13. Move-In / Move-Out Inspections & Snagging
+// -------------------------------------------------------------
+
+enum InspectionType {
+  MOVE_IN
+  MOVE_OUT
+  ROUTINE
+}
+
+enum InspectionStatus {
+  DRAFT
+  IN_REVIEW
+  COMPLETED
+  SIGNED
+}
+
+model Inspection {
+  id               String           @id @default(uuid())
+  unitId           String
+  unit             Unit             @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  leaseId          String?
+  lease            Lease?           @relation(fields: [leaseId], references: [id], onDelete: SetNull)
+  type             InspectionType   @default(MOVE_IN)
+  status           InspectionStatus @default(DRAFT)
+  conductedBy      String
+  conductedAt      DateTime         @default(now())
+  electricityMeter Decimal?
+  waterMeter       Decimal?
+  checklist        Json?
+  deductionsAmount Decimal          @default(0)
+  signatureUrl     String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+
+  @@index([unitId])
+  @@index([leaseId])
+  @@map("inspections")
+}
+
+// -------------------------------------------------------------
+// 14. Landlord / Property Owner Remittance Payouts
+// -------------------------------------------------------------
+
+enum PayoutStatus {
+  DRAFT
+  PROCESSING
+  PAID
+}
+
+model OwnerPayout {
+  id                   String       @id @default(uuid())
+  agencyId             String
+  agency               Agency       @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  propertyId           String
+  property             Property     @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  periodMonth          String
+  grossRent            Decimal
+  expensesDeducted     Decimal      @default(0)
+  managementCommission Decimal
+  netPayout            Decimal
+  status               PayoutStatus @default(DRAFT)
+  paymentReference     String?
+  paidAt               DateTime?
+  breakdown            Json?
+  createdAt            DateTime     @default(now())
+
+  @@index([agencyId])
+  @@index([propertyId])
+  @@map("owner_payouts")
+}
+
+// -------------------------------------------------------------
+// 15. WhatsApp & Multi-Channel Communications
+// -------------------------------------------------------------
+
+enum CommChannel {
+  WHATSAPP
+  METRASH_SMS
+  EMAIL
+}
+
+model CommunicationLog {
+  id             String      @id @default(uuid())
+  agencyId       String
+  agency         Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  recipientPhone String
+  recipientName  String
+  channel        CommChannel @default(WHATSAPP)
+  templateKey    String
+  messageText    String
+  status         String      @default("SENT")
+  sentAt         DateTime    @default(now())
+  createdAt      DateTime    @default(now())
+
+  @@index([agencyId])
+  @@map("communication_logs")
+}
+
+// -------------------------------------------------------------
+// 16. Billing & Subscription Invoices
+// -------------------------------------------------------------
+
+enum InvoiceStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+model Invoice {
+  id           String        @id @default(uuid())
+  agencyId     String
+  agency       Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  planId       String
+  amountQar    Decimal
+  status       InvoiceStatus @default(PENDING)
+  gateway      String        // "fatora" | "dibsy"
+  gatewayRef   String?       // transaction/session id from gateway
+  issuedAt     DateTime      @default(now())
+  dueAt        DateTime
+  paidAt       DateTime?
+  failReason   String?
+
+  @@index([agencyId])
+  @@map("invoices")
+}
+
+model PaymentMethod {
+  id                String   @id @default(uuid())
+  agencyId          String
+  agency            Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  gateway           String
+  gatewayCustomerId String
+  cardBrand         String?
+  cardLast4         String?
+  isDefault         Boolean  @default(false)
+  createdAt         DateTime @default(now())
+
+  @@index([agencyId])
+  @@map("payment_methods")
+}
+
+// -------------------------------------------------------------
+// 17. Multi-Channel Notification System
+// -------------------------------------------------------------
+
+enum NotifChannel {
+  EMAIL
+  WHATSAPP
+  IN_APP
+  SMS
+}
+
+model NotificationTemplate {
+  id              String       @id @default(uuid())
+  agencyId        String?
+  agency          Agency?      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  eventType       String
+  channel         NotifChannel
+  subjectTemplate String?
+  bodyTemplate    String
+
+  @@index([agencyId])
+  @@map("notification_templates")
+}
+
+model NotificationPreference {
+  id        String       @id @default(uuid())
+  userId    String
+  eventType String
+  channel   NotifChannel
+  enabled   Boolean      @default(true)
+
+  @@unique([userId, eventType, channel])
+  @@map("notification_preferences")
+}
+
+// -------------------------------------------------------------
+// 18. Manual Integration / API Configuration
+// -------------------------------------------------------------
+
+enum IntegrationProvider {
+  WHATSAPP_BUSINESS
+  EMAIL_SMTP
+  PAYMENT_FATORA
+  PAYMENT_DIBSY
+  GOOGLE_MAPS
+  AI_ASSISTANT
+}
+
+enum IntegrationStatus {
+  NOT_CONFIGURED
+  CONNECTED
+  ERROR
+}
+
+model Integration {
+  id           String              @id @default(uuid())
+  agencyId     String
+  agency       Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  provider     IntegrationProvider
+  configJson   String
+  status       IntegrationStatus   @default(NOT_CONFIGURED)
+  lastTestedAt DateTime?
+  lastError    String?
+
+  @@unique([agencyId, provider])
+  @@index([agencyId])
+  @@map("integrations")
+}
+
