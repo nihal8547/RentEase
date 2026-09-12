@@ -77,7 +77,7 @@ export class IntegrationsService {
       throw new BadRequestException('Integration not configured');
     }
 
-    const config = JSON.parse(this.encryptionService.decrypt(integration.configJson));
+    const _config = JSON.parse(this.encryptionService.decrypt(integration.configJson));
     this.logger.log(`Testing integration ${provider} for agency ${agencyId}`);
 
     // In a real app, actually test the connection using the config values

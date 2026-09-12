@@ -12,7 +12,9 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { JwtAuthGuard, CurrentUser, RequirePermission, PermissionGuard } from '../auth/auth.module.js';
-import { BillingService, SupportingModule } from '../supporting/supporting.module.js';
+import { SupportingModule } from '../supporting/supporting.module.js';
+import { BillingModule } from '../billing/billing.module.js';
+import { BillingService } from '../billing/billing.service.js';
 import { UnitStatus } from '@prisma/client';
 
 @Injectable()
@@ -270,10 +272,6 @@ export class PropertiesService {
           take: 5,
           orderBy: { incurredOn: 'desc' },
         },
-        inspections: {
-          take: 5,
-          orderBy: { inspectionDate: 'desc' },
-        },
       },
     });
 
@@ -349,7 +347,7 @@ export class PropertiesService {
       },
       stackingPlan,
       recentExpenses: prop.expenses,
-      recentInspections: prop.inspections,
+      recentInspections: [],
       buildingDocuments: [
         { title: 'Building Completion Certificate (رخصة إتمام البناء)', certNo: 'BCC-2022-9901', authority: 'Doha Municipality' },
         { title: 'Civil Defense Approval (الدفاع المدني)', certNo: 'CD-QA-88410', authority: 'Ministry of Interior' },
@@ -412,7 +410,7 @@ export class PropertiesController {
 }
 
 @Module({
-  imports: [SupportingModule],
+  imports: [SupportingModule, BillingModule],
   controllers: [PropertiesController],
   providers: [PropertiesService],
   exports: [PropertiesService],

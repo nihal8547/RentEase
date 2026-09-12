@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   Wrench,
   Plus,
@@ -25,13 +26,21 @@ export const MaintenanceView: React.FC = () => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  // Search & Filters
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = parseInt(searchParams.get('limit') || '10', 10);
+  const searchTerm = searchParams.get('search') || '';
+  const statusFilter = searchParams.get('status') || '';
+  const categoryFilter = searchParams.get('category') || '';
+  const priorityFilter = searchParams.get('priority') || '';
+
+  const updateParam = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value) newParams.set(key, value);
+    else newParams.delete(key);
+    if (key !== 'page') newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
 
   // Modals & Drawers
   const [isNewTicketOpen, setIsNewTicketOpen] = useState(false);
@@ -304,7 +313,7 @@ export const MaintenanceView: React.FC = () => {
             <ComboBoxWithAddNew
               listTypeKey="maintenance_categories"
               value={categoryFilter}
-              onChange={setCategoryFilter}
+              onChange={(val) => updateParam('category', val)}
               placeholder="Filter Category..."
               allowAddNew={false}
             />
@@ -312,7 +321,7 @@ export const MaintenanceView: React.FC = () => {
 
           <select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
+            onChange={(e) => updateParam('priority', e.target.value)}
             className="text-xs px-3 py-2 bg-sand-050 border border-line rounded focus:outline-none focus:border-maroon-700"
           >
             <option value="">All Priorities</option>
@@ -324,7 +333,7 @@ export const MaintenanceView: React.FC = () => {
 
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => updateParam('status', e.target.value)}
             className="text-xs px-3 py-2 bg-sand-050 border border-line rounded focus:outline-none focus:border-maroon-700"
           >
             <option value="">All Statuses</option>
@@ -338,9 +347,12 @@ export const MaintenanceView: React.FC = () => {
             <Button
               variant="ghost"
               onClick={() => {
-                setCategoryFilter('');
-                setPriorityFilter('');
-                setStatusFilter('');
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('category');
+                newParams.delete('priority');
+                newParams.delete('status');
+                newParams.set('page', '1');
+                setSearchParams(newParams);
               }}
             >
               Clear Filters
@@ -356,16 +368,10 @@ export const MaintenanceView: React.FC = () => {
         total={data?.total || 0}
         page={page}
         limit={limit}
-        onPageChange={setPage}
-        onLimitChange={(l: number) => {
-          setLimit(l);
-          setPage(1);
-        }}
+        onPageChange={(p) => updateParam('page', String(p))}
+        onLimitChange={(l: number) => updateParam('limit', String(l))}
         searchPlaceholder="Search by issue title, description, or unit..."
-        onSearchChange={(q: string) => {
-          setSearchTerm(q);
-          setPage(1);
-        }}
+        onSearchChange={(q: string) => updateParam('search', q)}
         isLoading={isLoading}
         onRowClick={(row: any) => setSelectedTicket(row)}
         emptyState={

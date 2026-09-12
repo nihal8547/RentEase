@@ -16,6 +16,7 @@ import {
   CanActivate,
   CallHandler,
   NestInterceptor,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -23,10 +24,12 @@ import { PassportModule, AuthGuard, PassportStrategy } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
 import { Strategy, ExtractJwt } from 'passport-jwt';
 import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import { IsEmail, IsString, MinLength, MaxLength, IsOptional, Matches } from 'class-validator';
 import { Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { EmailService } from '../supporting/email.service.js';
 import { UserStatus } from '@prisma/client';
 
 // =============================================================
@@ -79,6 +82,9 @@ export class ForgotPasswordDto {
 }
 
 export class ResetPasswordDto {
+  @IsEmail()
+  email: string;
+
   @IsString()
   token: string;
 
@@ -251,17 +257,21 @@ export class JwtAuthGuard extends AuthGuard('jwt') {}
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
+    private emailService: EmailService,
   ) {}
 
   private signTokens(userId: string, agencyId: string, email: string, roleId: string) {
-    const secret = process.env.JWT_SECRET;
+    const accessSecret = process.env.JWT_SECRET;
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
     const payload = { userId, agencyId, email, roleId };
     
-    const accessToken = this.jwtService.sign(payload, { secret, expiresIn: '15m' });
-    const refreshToken = this.jwtService.sign(payload, { secret, expiresIn: '7d' });
+    const accessToken = this.jwtService.sign(payload, { secret: accessSecret, expiresIn: '15m' });
+    const refreshToken = this.jwtService.sign(payload, { secret: refreshSecret, expiresIn: '7d' });
     
     return { accessToken, refreshToken };
   }
@@ -421,39 +431,49 @@ export class AuthService {
   async forgotPassword(data: ForgotPasswordDto) {
     const user = await this.prisma.user.findUnique({ where: { email: data.email } });
     if (!user) {
-      // Return success anyway to prevent email enumeration
+      // Return success anyway to prevent email enumeration — never reveal if email exists
       return { message: 'If that email is registered, a reset link has been sent.' };
     }
 
-    // Generate token
-    const token = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+    // Generate cryptographically secure token (Fix 3)
+    const rawToken = randomBytes(32).toString('hex');
+    const tokenHash = await bcrypt.hash(rawToken, 10); // Store only the hash
     const expiry = new Date();
     expiry.setHours(expiry.getHours() + 1); // 1 hour expiry
 
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        resetToken: token,
+        resetToken: tokenHash,
         resetTokenExpiry: expiry,
       },
     });
 
-    // Mock Email Send
-    const resetUrl = `http://localhost:5173/reset-password?token=${token}`;
-    console.log(`\n\n[MOCK EMAIL SEND]\nTo: ${user.email}\nSubject: Password Reset\nClick this link to reset your password: ${resetUrl}\n\n`);
+    // Send real password reset email (Fix 4)
+    const frontendOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
+    const resetUrl = `${frontendOrigin}/reset-password?token=${rawToken}&email=${encodeURIComponent(user.email)}`;
+    await this.emailService.sendPasswordReset(user.email, user.name, resetUrl);
 
     return { message: 'If that email is registered, a reset link has been sent.' };
   }
 
-  async resetPassword(data: ResetPasswordDto) {
+  async resetPassword(data: ResetPasswordDto & { email: string }) {
+    // Find user by email first, then verify token hash (Fix 3: hashed token comparison)
     const user = await this.prisma.user.findFirst({
       where: {
-        resetToken: data.token,
+        email: data.email,
         resetTokenExpiry: { gt: new Date() },
+        resetToken: { not: null },
       },
     });
 
-    if (!user) {
+    if (!user || !user.resetToken) {
+      throw new UnauthorizedException('Invalid or expired reset token.');
+    }
+
+    // Verify raw token against stored bcrypt hash
+    const tokenValid = await bcrypt.compare(data.token, user.resetToken);
+    if (!tokenValid) {
       throw new UnauthorizedException('Invalid or expired reset token.');
     }
 
@@ -463,7 +483,7 @@ export class AuthService {
       where: { id: user.id },
       data: {
         passwordHash,
-        resetToken: null,
+        resetToken: null,      // Invalidate token after single use
         resetTokenExpiry: null,
       },
     });
@@ -473,7 +493,9 @@ export class AuthService {
 
   async refresh(data: RefreshDto) {
     try {
-      const payload = this.jwtService.verify(data.refreshToken, { secret: process.env.JWT_SECRET });
+      // Use JWT_REFRESH_SECRET for refresh tokens (Fix 6)
+      const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+      const payload = this.jwtService.verify(data.refreshToken, { secret: refreshSecret });
       
       const user = await this.prisma.user.findUnique({
         where: { id: payload.userId },
@@ -484,7 +506,7 @@ export class AuthService {
       }
 
       return this.signTokens(user.id, user.agencyId, user.email, user.roleId);
-    } catch (e) {
+    } catch (_e) {
       throw new UnauthorizedException('Invalid or expired refresh token.');
     }
   }
@@ -511,7 +533,8 @@ export class AuthController {
     return this.authService.login(body);
   }
 
-  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  // Fix 9: Stricter rate limit — 3 requests per hour max to prevent email provider abuse and account enumeration
+  @Throttle({ default: { limit: 3, ttl: 3600000 } })
   @Post('forgot-password')
   async forgotPassword(@Body() body: ForgotPasswordDto) {
     return this.authService.forgotPassword(body);
@@ -547,12 +570,12 @@ export class AuthController {
       useFactory: () => {
         const secret = process.env.JWT_SECRET;
         if (!secret) throw new Error('FATAL: JWT_SECRET not set.');
-        return { secret, signOptions: { expiresIn: '8h' } };
+        return { secret, signOptions: { expiresIn: '15m' } };
       },
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, PermissionGuard, AuditInterceptor],
-  exports: [AuthService, JwtStrategy, JwtAuthGuard, PassportModule, JwtModule, PermissionGuard, AuditInterceptor],
+  providers: [AuthService, EmailService, JwtStrategy, JwtAuthGuard, PermissionGuard, AuditInterceptor],
+  exports: [AuthService, EmailService, JwtStrategy, JwtAuthGuard, PassportModule, JwtModule, PermissionGuard, AuditInterceptor],
 })
 export class AuthModule {}

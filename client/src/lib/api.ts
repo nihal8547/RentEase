@@ -58,6 +58,12 @@ api.interceptors.response.use(
           window.location.href = '/login?expired=true';
         }
       }
+    } else if (error.response?.status >= 500) {
+      if (error.config?.method === 'get') {
+        window.location.href = '/500';
+      } else {
+        toast.error('Internal Server Error. Please try again later.');
+      }
     } else if (error.config?.method !== 'get' && error.response?.status !== 401 && error.response?.status !== 403) {
       // Toast normal API errors, but avoid toasting 401/403 loops
       const message = error.response?.data?.message || error.message || 'An unexpected error occurred';

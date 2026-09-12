@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { MessageSquare, Send, Phone, CheckCheck, Clock } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { MessageSquare, Send, Phone, CheckCheck, Clock, ChevronLeft, ChevronRight } from 'lucide-react';
 import api from '../lib/api';
+import { EmptyState } from '../components/ui/EmptyState';
 
 interface CommunicationLog {
   id: string;
@@ -69,18 +72,55 @@ const STATUS_CONFIG: Record<string, { label: string; icon: React.FC<any>; color:
 const formatDate = (d?: string) => d ? new Date(d).toLocaleDateString('en-QA', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
 
 export default function CommunicationsView() {
+  const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
-  const [filterChannel, setFilterChannel] = useState('ALL');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['communications'],
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = parseInt(searchParams.get('limit') || '20', 10);
+  const filterChannel = searchParams.get('channel') || 'ALL';
+
+  const updateParam = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value && value !== 'ALL') newParams.set(key, value);
+    else newParams.delete(key);
+    if (key !== 'page') newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const { data: logsData, isLoading, isFetching } = useQuery({
+    queryKey: ['communications', { page, limit, channel: filterChannel }],
     queryFn: async () => {
-      const res = await api.get('/communications/logs');
-      return res.data as CommunicationLog[];
+      const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+      if (filterChannel !== 'ALL') params.set('channel', filterChannel);
+      const res = await api.get(`/communications/logs?${params.toString()}`);
+      return res.data;
     },
+    placeholderData: (prev) => prev,
   });
 
-  const logs = (data || []).filter(l => filterChannel === 'ALL' || l.channel === filterChannel);
+  useEffect(() => {
+    if (logsData?.page < logsData?.totalPages) {
+      const params = new URLSearchParams({ page: (page + 1).toString(), limit: limit.toString() });
+      if (filterChannel !== 'ALL') params.set('channel', filterChannel);
+      queryClient.prefetchQuery({
+        queryKey: ['communications', { page: page + 1, limit, channel: filterChannel }],
+        queryFn: () => api.get(`/communications/logs?${params.toString()}`).then(r => r.data),
+      });
+    }
+  }, [logsData, page, limit, filterChannel, queryClient]);
+
+  const logs: CommunicationLog[] = logsData?.data || [];
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: logs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 100,
+    overscan: 5,
+  });
+
+  const virtualItems = rowVirtualizer.getVirtualItems();
 
   return (
     <div className="space-y-6 font-sans">
@@ -93,9 +133,9 @@ export default function CommunicationsView() {
         <p className="text-xs text-[#5B534C] mt-1">Bilingual tenant messaging with wa.me quick-dispatch and Metrash SMS audit log</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Templates Panel */}
-        <div>
+        <div className="lg:col-span-1">
           <h3 className="text-xs font-semibold text-[#5B534C] uppercase tracking-wider mb-3">Quick Templates</h3>
           <div className="space-y-3">
             {TEMPLATES.map(t => (
@@ -104,7 +144,7 @@ export default function CommunicationsView() {
                 onClick={() => setSelectedTemplate(selectedTemplate?.key === t.key ? null : t)}
                 className={`rounded-lg p-4 cursor-pointer border transition-all ${
                   selectedTemplate?.key === t.key
-                    ? 'bg-[#FBF9F3] border-[#B9924A]'
+                    ? 'bg-[#FBF9F3] border-[#B9924A] shadow-sm'
                     : 'bg-white border-[#E4DCCB] hover:border-[#B9924A]'
                 }`}
               >
@@ -119,7 +159,7 @@ export default function CommunicationsView() {
                       href={`https://wa.me/?text=${encodeURIComponent(t.preview)}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-2 w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded transition-colors"
+                      className="mt-2 w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold px-4 py-2 rounded-xl transition-colors"
                     >
                       <Phone size={12} />
                       Open in WhatsApp
@@ -132,75 +172,129 @@ export default function CommunicationsView() {
         </div>
 
         {/* Message Log */}
-        <div className="col-span-2">
-          <div className="flex items-center justify-between mb-3">
+        <div className="lg:col-span-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
             <h3 className="text-xs font-semibold text-[#5B534C] uppercase tracking-wider">Message Audit Log</h3>
-            <div className="flex items-center gap-1 bg-white border border-[#E4DCCB] rounded-lg p-1">
+            <div className="flex items-center gap-1 bg-white border border-[#E4DCCB] rounded-xl p-1 shadow-sm flex-wrap">
               {['ALL', 'WHATSAPP', 'METRASH_SMS', 'EMAIL'].map(c => (
                 <button
                   key={c}
-                  onClick={() => setFilterChannel(c)}
-                  className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${
-                    filterChannel === c ? 'bg-[#6E1731] text-white' : 'text-[#5B534C] hover:bg-[#F4EFE4]'
+                  onClick={() => updateParam('channel', c)}
+                  className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors cursor-pointer ${
+                    filterChannel === c ? 'bg-[#6E1731] text-white shadow-xs' : 'text-[#5B534C] hover:bg-[#F4EFE4]'
                   }`}
                 >
-                  {c === 'ALL' ? 'All' : CHANNEL_CONFIG[c]?.label || c}
+                  {c === 'ALL' ? 'All Channels' : CHANNEL_CONFIG[c]?.label || c}
                 </button>
               ))}
             </div>
           </div>
 
-          <div className="bg-white border border-[#E4DCCB] rounded-lg overflow-hidden">
+          <div className="bg-white border border-[#E4DCCB] rounded-2xl overflow-hidden shadow-sm relative">
+            {isFetching && logs.length > 0 && (
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#FBF9F3] z-20">
+                <div className="h-full bg-[#B9924A] animate-pulse w-1/3"></div>
+              </div>
+            )}
+            
             {isLoading ? (
-              <div className="flex items-center justify-center h-48 text-[#8B8279] text-sm">Loading messages…</div>
+              <div className="p-4 space-y-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex gap-4 items-center">
+                    <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="w-1/3 h-4 bg-slate-200 rounded animate-pulse"></div>
+                      <div className="w-full h-4 bg-slate-200 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : logs.length === 0 ? (
-              <div className="flex items-center justify-center h-48 text-[#8B8279] text-sm">No messages found</div>
+              <div className="p-8">
+                <EmptyState
+                  icon={MessageSquare}
+                  title="No communications found"
+                  description="No messages match your active filters."
+                />
+              </div>
             ) : (
-              <div className="divide-y divide-[#E4DCCB]">
-                {logs.map(log => {
-                  const channelCfg = CHANNEL_CONFIG[log.channel];
-                  const statusCfg = STATUS_CONFIG[log.status] || STATUS_CONFIG['SENT'];
-                  const StatusIcon = statusCfg.icon;
-                  return (
-                    <div key={log.id} className="p-4 hover:bg-[#FBF9F3] transition-colors">
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg shrink-0 ${channelCfg?.iconBg}`}>
-                          <MessageSquare size={14} className={channelCfg?.text} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between gap-2 mb-1">
-                            <div className="flex items-center gap-2">
-                              <p className="text-sm font-semibold text-[#221E1C]">{log.recipientName}</p>
-                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${channelCfg?.bg} ${channelCfg?.text} ${channelCfg?.border}`}>
-                                {channelCfg?.label}
-                              </span>
+              <div ref={parentRef} className="overflow-y-auto max-h-[600px] p-4 custom-scrollbar">
+                <div style={{ height: rowVirtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+                  {virtualItems.map((virtualRow) => {
+                    const log = logs[virtualRow.index];
+                    const cfg = CHANNEL_CONFIG[log.channel] || CHANNEL_CONFIG['WHATSAPP'];
+                    const statusCfg = STATUS_CONFIG[log.status] || STATUS_CONFIG['SENT'];
+                    const StatusIcon = statusCfg.icon;
+
+                    return (
+                      <div
+                        key={log.id}
+                        data-index={virtualRow.index}
+                        ref={rowVirtualizer.measureElement}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualRow.start}px)`,
+                          paddingBottom: '12px'
+                        }}
+                      >
+                        <div className="bg-white border border-[#E4DCCB] rounded-xl p-4 flex items-start gap-4 hover:bg-[#FBF9F3] transition-colors">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${cfg.iconBg} ${cfg.text}`}>
+                            <Phone size={18} />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-start justify-between gap-3 mb-1">
+                              <div>
+                                <p className="text-sm font-semibold text-[#221E1C]">{log.recipientName}</p>
+                                <p className="text-xs font-mono text-[#8B8279]">{log.recipientPhone}</p>
+                              </div>
+                              <div className="text-right">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                                  {cfg.label}
+                                </span>
+                                <p className="text-[10px] text-[#8B8279] mt-1">{formatDate(log.sentAt)}</p>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
+                            <p className="text-xs text-[#5B534C] mt-2 line-clamp-2 leading-relaxed bg-[#F4F1EA] p-2 rounded-lg border border-[#EDE8DE]">
+                              {log.messageText}
+                            </p>
+                            <div className="mt-2 flex items-center gap-1">
                               <StatusIcon size={12} className={statusCfg.color} />
-                              <span className={`text-[10px] ${statusCfg.color}`}>{statusCfg.label}</span>
+                              <span className={`text-[10px] font-medium ${statusCfg.color}`}>{statusCfg.label}</span>
                             </div>
                           </div>
-                          <p className="text-xs text-[#8B8279] mb-1">{log.recipientPhone} · {formatDate(log.sentAt)}</p>
-                          <p className="text-xs text-[#5B534C] leading-relaxed line-clamp-2">{log.messageText}</p>
-                          {log.templateKey && (
-                            <span className="inline-block mt-1.5 text-[10px] px-1.5 py-0.5 rounded bg-[#F4EFE4] text-[#8B8279] font-mono border border-[#E4DCCB]">
-                              {log.templateKey}
-                            </span>
-                          )}
                         </div>
-                        <a
-                          href={`https://wa.me/${log.recipientPhone.replace(/\s+/g, '').replace('+', '')}?text=${encodeURIComponent(log.messageText)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="shrink-0 p-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg text-green-700 transition-colors"
-                          title="Resend via WhatsApp"
-                        >
-                          <Send size={12} />
-                        </a>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Pagination Footer */}
+            {logsData && logsData.totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-[#E4DCCB] bg-[#FBF9F3]">
+                <p className="text-xs text-[#5B534C]">
+                  Showing <span className="font-semibold text-[#221E1C]">{(page - 1) * limit + 1}</span> to <span className="font-semibold text-[#221E1C]">{Math.min(page * limit, logsData.total)}</span> of <span className="font-semibold text-[#221E1C]">{logsData.total}</span> entries
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => updateParam('page', String(page - 1))}
+                    disabled={page <= 1}
+                    className="p-1.5 rounded-lg border border-[#E4DCCB] bg-white text-[#5B534C] hover:bg-[#F4EFE4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => updateParam('page', String(page + 1))}
+                    disabled={page >= logsData.totalPages}
+                    className="p-1.5 rounded-lg border border-[#E4DCCB] bg-white text-[#5B534C] hover:bg-[#F4EFE4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
             )}
           </div>

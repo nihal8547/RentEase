@@ -24,6 +24,7 @@ import { BillingModule } from './billing/billing.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { BullModule } from '@nestjs/bullmq';
+import { RedisModule } from './redis/redis.module.js';
 
 @Module({
   imports: [
@@ -48,9 +49,10 @@ import { BullModule } from '@nestjs/bullmq';
     BullModule.forRoot({
       connection: {
         host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379', 10),
+        port: Number(process.env.REDIS_PORT) || 6379,
       },
     }),
+    RedisModule,
     PrismaModule,
     AuthModule,
     PropertiesModule,

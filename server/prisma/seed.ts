@@ -120,7 +120,7 @@ async function main() {
       data: { name: 'Agency', priceQar: 1499, unitLimit: 100 },
     }),
     enterprise: await prisma.subscriptionPlan.create({
-      data: { name: 'Enterprise', priceQar: 3999, unitLimit: 1000 },
+      data: { name: 'Enterprise', priceQar: 3999 }, // unitLimit omitted = unlimited
     }),
   };
 

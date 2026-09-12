@@ -20,7 +20,7 @@ export class AppController {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       return { status: 'ok', database: 'connected', timestamp: new Date() };
-    } catch (e) {
+    } catch (_e) {
       return { status: 'error', database: 'disconnected', timestamp: new Date() };
     }
   }

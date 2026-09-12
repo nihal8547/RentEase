@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ClipboardCheck,
   CheckCircle2,
@@ -10,6 +12,8 @@ import {
   Zap,
   Plus,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import api from '../lib/api';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -64,10 +68,22 @@ const formatDate = (d?: string) =>
 
 export default function InspectionsView() {
   const queryClient = useQueryClient();
-  const [filterType, setFilterType] = useState('ALL');
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedInspection, setSelectedInspection] = useState<Inspection | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = parseInt(searchParams.get('limit') || '20', 10);
+  const filterType = searchParams.get('type') || 'ALL';
+  const filterStatus = searchParams.get('status') || 'ALL';
+
+  const updateParam = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value && value !== 'ALL') newParams.set(key, value);
+    else newParams.delete(key);
+    if (key !== 'page') newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
 
   // Form State
   const [formData, setFormData] = useState({
@@ -83,11 +99,24 @@ export default function InspectionsView() {
   const [formError, setFormError] = useState('');
 
   // Fetch Inspections
-  const { data, isLoading } = useQuery({
-    queryKey: ['inspections'],
+  const { data: inspectionsData, isLoading, isFetching } = useQuery({
+    queryKey: ['inspections', { page, limit, type: filterType, status: filterStatus }],
     queryFn: async () => {
-      const res = await api.get('/inspections');
-      return res.data as Inspection[];
+      const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+      if (filterType !== 'ALL') params.set('type', filterType);
+      if (filterStatus !== 'ALL') params.set('status', filterStatus);
+      const res = await api.get(`/inspections?${params.toString()}`);
+      return res.data;
+    },
+    placeholderData: (prev) => prev,
+  });
+
+  // Fetch Summary
+  const { data: summaryData } = useQuery({
+    queryKey: ['inspections', 'summary'],
+    queryFn: async () => {
+      const res = await api.get('/inspections/summary');
+      return res.data;
     },
   });
 
@@ -101,6 +130,18 @@ export default function InspectionsView() {
     enabled: showAddModal,
   });
 
+  useEffect(() => {
+    if (inspectionsData?.page < inspectionsData?.totalPages) {
+      const params = new URLSearchParams({ page: (page + 1).toString(), limit: limit.toString() });
+      if (filterType !== 'ALL') params.set('type', filterType);
+      if (filterStatus !== 'ALL') params.set('status', filterStatus);
+      queryClient.prefetchQuery({
+        queryKey: ['inspections', { page: page + 1, limit, type: filterType, status: filterStatus }],
+        queryFn: () => api.get(`/inspections?${params.toString()}`).then(r => r.data),
+      });
+    }
+  }, [inspectionsData, page, limit, filterType, filterStatus, queryClient]);
+
   // Create Inspection Mutation
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -110,14 +151,8 @@ export default function InspectionsView() {
       queryClient.invalidateQueries({ queryKey: ['inspections'] });
       setShowAddModal(false);
       setFormData({
-        unitId: '',
-        type: 'MOVE_IN',
-        conductedBy: '',
-        conductedAt: new Date().toISOString().slice(0, 10),
-        electricityMeter: '',
-        waterMeter: '',
-        deductionsAmount: '',
-        notes: '',
+        unitId: '', type: 'MOVE_IN', conductedBy: '', conductedAt: new Date().toISOString().slice(0, 10),
+        electricityMeter: '', waterMeter: '', deductionsAmount: '', notes: '',
       });
       setFormError('');
     },
@@ -128,14 +163,8 @@ export default function InspectionsView() {
 
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.unitId) {
-      setFormError('Please select a unit.');
-      return;
-    }
-    if (!formData.conductedBy.trim()) {
-      setFormError('Inspector name is required.');
-      return;
-    }
+    if (!formData.unitId) { setFormError('Please select a unit.'); return; }
+    if (!formData.conductedBy.trim()) { setFormError('Inspector name is required.'); return; }
 
     createMutation.mutate({
       unitId: formData.unitId,
@@ -149,10 +178,15 @@ export default function InspectionsView() {
     });
   };
 
-  const inspections = (data || []).filter(i =>
-    (filterType === 'ALL' || i.type === filterType) &&
-    (filterStatus === 'ALL' || i.status === filterStatus)
-  );
+  const inspections: Inspection[] = inspectionsData?.data || [];
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const listVirtualizer = useVirtualizer({
+    count: inspections.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 124,
+    overscan: 5,
+  });
 
   return (
     <div className="space-y-6 font-sans">
@@ -178,14 +212,16 @@ export default function InspectionsView() {
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {[
-          { label: 'Total Inspections', val: data?.length || 0,                                         color: 'text-[#221E1C]',  bg: 'bg-white' },
-          { label: 'Move-In',           val: data?.filter(i => i.type === 'MOVE_IN').length || 0,     color: 'text-blue-700',   bg: 'bg-blue-50' },
-          { label: 'Move-Out',          val: data?.filter(i => i.type === 'MOVE_OUT').length || 0,    color: 'text-orange-700', bg: 'bg-orange-50' },
-          { label: 'In Review',         val: data?.filter(i => i.status === 'IN_REVIEW').length || 0,  color: 'text-amber-700',  bg: 'bg-amber-50' },
+          { label: 'Total Inspections', val: summaryData?.total || 0,                                         color: 'text-[#221E1C]',  bg: 'bg-white' },
+          { label: 'Move-In',           val: summaryData?.moveIn || 0,     color: 'text-blue-700',   bg: 'bg-blue-50' },
+          { label: 'Move-Out',          val: summaryData?.moveOut || 0,    color: 'text-orange-700', bg: 'bg-orange-50' },
+          { label: 'In Review',         val: summaryData?.pending || 0,  color: 'text-amber-700',  bg: 'bg-amber-50' },
         ].map(s => (
           <div key={s.label} className={`${s.bg} border border-[#E4DCCB] rounded-xl p-4 shadow-sm`}>
             <p className="text-xs text-[#8B8279] mb-1">{s.label}</p>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.val}</p>
+            <p className={`text-2xl font-bold ${s.color}`}>
+              {summaryData ? s.val : <span className="text-transparent bg-slate-200 animate-pulse rounded">000</span>}
+            </p>
           </div>
         ))}
       </div>
@@ -199,7 +235,7 @@ export default function InspectionsView() {
               {['ALL', 'MOVE_IN', 'MOVE_OUT', 'ROUTINE'].map(t => (
                 <button
                   key={t}
-                  onClick={() => setFilterType(t)}
+                  onClick={() => updateParam('type', t)}
                   className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors cursor-pointer ${
                     filterType === t ? 'bg-[#6E1731] text-white shadow-xs' : 'text-[#5B534C] hover:bg-[#F4EFE4]'
                   }`}
@@ -212,7 +248,7 @@ export default function InspectionsView() {
               {['ALL', 'IN_REVIEW', 'COMPLETED', 'SIGNED', 'DRAFT'].map(s => (
                 <button
                   key={s}
-                  onClick={() => setFilterStatus(s)}
+                  onClick={() => updateParam('status', s)}
                   className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors cursor-pointer ${
                     filterStatus === s ? 'bg-[#6E1731] text-white shadow-xs' : 'text-[#5B534C] hover:bg-[#F4EFE4]'
                   }`}
@@ -223,11 +259,30 @@ export default function InspectionsView() {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="bg-white border border-[#E4DCCB] rounded-2xl overflow-hidden shadow-sm relative">
+            {isFetching && inspections.length > 0 && (
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#FBF9F3] z-20">
+                <div className="h-full bg-[#B9924A] animate-pulse w-1/3"></div>
+              </div>
+            )}
+            
             {isLoading ? (
-              <div className="flex items-center justify-center h-48 text-[#8B8279] text-sm">Loading inspections…</div>
+              <div className="p-4 space-y-4">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="rounded-2xl p-4 border border-[#E4DCCB] animate-pulse">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="h-4 bg-slate-200 rounded w-1/3 mb-2"></div>
+                        <div className="h-4 bg-slate-200 rounded w-1/2 mb-1"></div>
+                        <div className="h-4 bg-slate-200 rounded w-1/4"></div>
+                      </div>
+                      <div className="w-16 h-8 bg-slate-200 rounded"></div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             ) : inspections.length === 0 ? (
-              <div className="bg-white border border-[#E4DCCB] rounded-2xl p-8 shadow-sm">
+              <div className="p-8">
                 <EmptyState
                   icon={ClipboardCheck}
                   title="No inspections found"
@@ -237,69 +292,112 @@ export default function InspectionsView() {
                 />
               </div>
             ) : (
-              inspections.map(inspection => {
-                const typeCfg = TYPE_CONFIG[inspection.type] || TYPE_CONFIG['ROUTINE'];
-                const statusCfg = STATUS_CONFIG[inspection.status] || STATUS_CONFIG['DRAFT'];
-                const StatusIcon = statusCfg?.icon || Clock;
-                return (
-                  <div
-                    key={inspection.id}
-                    onClick={() => setSelectedInspection(inspection)}
-                    className={`bg-white border rounded-2xl p-4 cursor-pointer hover:bg-[#FBF9F3] transition-all shadow-sm ${
-                      selectedInspection?.id === inspection.id
-                        ? 'border-[#B9924A] ring-1 ring-[#B9924A] bg-[#FBF9F3]'
-                        : 'border-[#E4DCCB]'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${typeCfg.bg} ${typeCfg.text} ${typeCfg.border}`}>
-                            {typeCfg.label}
-                          </span>
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${statusCfg?.bg} ${statusCfg?.text} ${statusCfg?.border}`}>
-                            <StatusIcon size={9} />
-                            {statusCfg?.label}
-                          </span>
-                          {(inspection.deductionsAmount || 0) > 0 && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">
-                              <Wrench size={9} />
-                              Deductions: {formatQAR(Number(inspection.deductionsAmount))}
-                            </span>
-                          )}
+              <div ref={parentRef} className="overflow-y-auto max-h-[600px] p-4 custom-scrollbar">
+                <div style={{ height: listVirtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+                  {listVirtualizer.getVirtualItems().map(virtualRow => {
+                    const inspection = inspections[virtualRow.index];
+                    const typeCfg = TYPE_CONFIG[inspection.type] || TYPE_CONFIG['ROUTINE'];
+                    const statusCfg = STATUS_CONFIG[inspection.status] || STATUS_CONFIG['DRAFT'];
+                    const StatusIcon = statusCfg?.icon || Clock;
+                    return (
+                      <div
+                        key={inspection.id}
+                        data-index={virtualRow.index}
+                        ref={listVirtualizer.measureElement}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          transform: `translateY(${virtualRow.start}px)`,
+                          paddingBottom: '12px'
+                        }}
+                      >
+                        <div
+                          onClick={() => setSelectedInspection(inspection)}
+                          className={`bg-white border rounded-2xl p-4 cursor-pointer hover:bg-[#FBF9F3] transition-all shadow-sm ${
+                            selectedInspection?.id === inspection.id
+                              ? 'border-[#B9924A] ring-1 ring-[#B9924A] bg-[#FBF9F3] relative z-10'
+                              : 'border-[#E4DCCB]'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${typeCfg.bg} ${typeCfg.text} ${typeCfg.border}`}>
+                                  {typeCfg.label}
+                                </span>
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${statusCfg?.bg} ${statusCfg?.text} ${statusCfg?.border}`}>
+                                  <StatusIcon size={9} />
+                                  {statusCfg?.label}
+                                </span>
+                                {(inspection.deductionsAmount || 0) > 0 && (
+                                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-red-50 text-red-700 border border-red-200">
+                                    <Wrench size={9} />
+                                    Deductions: {formatQAR(Number(inspection.deductionsAmount))}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[#221E1C] font-semibold text-sm">
+                                {inspection.unit?.property?.name} — Unit {inspection.unit?.unitNumber}
+                              </p>
+                              <p className="text-[#5B534C] text-xs mt-0.5">
+                                {inspection.lease?.tenant?.name || 'Resident'} · Inspector: {inspection.conductedBy}
+                              </p>
+                              <p className="text-[#8B8279] text-[11px] mt-1">{formatDate(inspection.conductedAt)}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              {inspection.electricityMeter && (
+                                <div className="flex items-center gap-1 text-xs text-amber-600 mb-1">
+                                  <Zap size={12} />
+                                  <span className="font-mono font-medium">{inspection.electricityMeter} kWh</span>
+                                </div>
+                              )}
+                              {inspection.waterMeter && (
+                                <div className="flex items-center gap-1 text-xs text-blue-600">
+                                  <Droplets size={12} />
+                                  <span className="font-mono font-medium">{inspection.waterMeter} m³</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <p className="text-[#221E1C] font-semibold text-sm">
-                          {inspection.unit?.property?.name} — Unit {inspection.unit?.unitNumber}
-                        </p>
-                        <p className="text-[#5B534C] text-xs mt-0.5">
-                          {inspection.lease?.tenant?.name || 'Resident'} · Inspector: {inspection.conductedBy}
-                        </p>
-                        <p className="text-[#8B8279] text-[11px] mt-1">{formatDate(inspection.conductedAt)}</p>
                       </div>
-                      <div className="text-right shrink-0">
-                        {inspection.electricityMeter && (
-                          <div className="flex items-center gap-1 text-xs text-amber-600 mb-1">
-                            <Zap size={12} />
-                            <span className="font-mono font-medium">{inspection.electricityMeter} kWh</span>
-                          </div>
-                        )}
-                        {inspection.waterMeter && (
-                          <div className="flex items-center gap-1 text-xs text-blue-600">
-                            <Droplets size={12} />
-                            <span className="font-mono font-medium">{inspection.waterMeter} m³</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {/* Pagination Footer */}
+            {inspectionsData && inspectionsData.totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-[#E4DCCB] bg-[#FBF9F3]">
+                <p className="text-xs text-[#5B534C]">
+                  Showing <span className="font-semibold text-[#221E1C]">{(page - 1) * limit + 1}</span> to <span className="font-semibold text-[#221E1C]">{Math.min(page * limit, inspectionsData.total)}</span> of <span className="font-semibold text-[#221E1C]">{inspectionsData.total}</span> entries
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => updateParam('page', String(page - 1))}
+                    disabled={page <= 1}
+                    className="p-1.5 rounded-lg border border-[#E4DCCB] bg-white text-[#5B534C] hover:bg-[#F4EFE4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => updateParam('page', String(page + 1))}
+                    disabled={page >= inspectionsData.totalPages}
+                    className="p-1.5 rounded-lg border border-[#E4DCCB] bg-white text-[#5B534C] hover:bg-[#F4EFE4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         </div>
 
         {/* Detail Panel */}
-        <div>
+        <div className="lg:col-span-1">
           {selectedInspection ? (
             <div className="bg-white border border-[#E4DCCB] rounded-2xl p-5 sticky top-6 shadow-sm space-y-4">
               <h3 className="text-sm font-bold text-[#221E1C] flex items-center gap-2">
@@ -372,7 +470,7 @@ export default function InspectionsView() {
               )}
             </div>
           ) : (
-            <div className="bg-white border border-[#E4DCCB] rounded-2xl p-8 text-center text-[#8B8279] shadow-sm">
+            <div className="bg-white border border-[#E4DCCB] rounded-2xl p-8 text-center text-[#8B8279] shadow-sm sticky top-6">
               <ClipboardCheck size={36} className="mx-auto mb-2 text-[#E4DCCB]" />
               <p className="text-sm font-medium">Select an inspection to view details</p>
             </div>

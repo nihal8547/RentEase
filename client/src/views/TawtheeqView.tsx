@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   ScrollText,
   CheckCircle2,
@@ -11,6 +13,8 @@ import {
   Check,
   Ban,
   FileCheck,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import api from '../lib/api';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -50,17 +54,51 @@ const formatDate = (d?: string) =>
 
 export default function TawtheeqView() {
   const queryClient = useQueryClient();
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [searchParams, setSearchParams] = useSearchParams();
   const [calcRent, setCalcRent] = useState('');
   const [calcMonths, setCalcMonths] = useState('12');
 
-  const { data, isLoading } = useQuery({
-    queryKey: ['tawtheeq'],
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = parseInt(searchParams.get('limit') || '20', 10);
+  const filterStatus = searchParams.get('status') || 'ALL';
+
+  const updateParam = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value && value !== 'ALL') newParams.set(key, value);
+    else newParams.delete(key);
+    if (key !== 'page') newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const { data: tawtheeqData, isLoading, isFetching } = useQuery({
+    queryKey: ['tawtheeq', { page, limit, status: filterStatus }],
     queryFn: async () => {
-      const res = await api.get('/tawtheeq');
-      return res.data as TawtheeqRegistration[];
+      const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+      if (filterStatus !== 'ALL') params.set('status', filterStatus);
+      const res = await api.get(`/tawtheeq?${params.toString()}`);
+      return res.data;
+    },
+    placeholderData: (prev) => prev,
+  });
+
+  const { data: summaryData } = useQuery({
+    queryKey: ['tawtheeq', 'summary'],
+    queryFn: async () => {
+      const res = await api.get('/tawtheeq/summary');
+      return res.data;
     },
   });
+
+  useEffect(() => {
+    if (tawtheeqData?.page < tawtheeqData?.totalPages) {
+      const params = new URLSearchParams({ page: (page + 1).toString(), limit: limit.toString() });
+      if (filterStatus !== 'ALL') params.set('status', filterStatus);
+      queryClient.prefetchQuery({
+        queryKey: ['tawtheeq', { page: page + 1, limit, status: filterStatus }],
+        queryFn: () => api.get(`/tawtheeq?${params.toString()}`).then(r => r.data),
+      });
+    }
+  }, [tawtheeqData, page, limit, filterStatus, queryClient]);
 
   const statusMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -71,8 +109,18 @@ export default function TawtheeqView() {
     },
   });
 
-  const registrations = (data || []).filter(r => filterStatus === 'ALL' || r.status === filterStatus);
+  const registrations: TawtheeqRegistration[] = tawtheeqData?.data || [];
   const calculatedFee = calcRent && calcMonths ? parseFloat(calcRent) * parseInt(calcMonths) * 0.005 : 0;
+
+  const parentRef = useRef<HTMLDivElement>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: registrations.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 64,
+    overscan: 10,
+  });
+  
+  const virtualItems = rowVirtualizer.getVirtualItems();
 
   return (
     <div className="space-y-6 font-sans">
@@ -94,7 +142,7 @@ export default function TawtheeqView() {
             {['ALL', 'APPROVED', 'PENDING_APPROVAL', 'SUBMITTED', 'DRAFT', 'EXPIRED', 'REJECTED'].map(s => (
               <button
                 key={s}
-                onClick={() => setFilterStatus(s)}
+                onClick={() => updateParam('status', s)}
                 className={`px-3 py-1.5 text-xs rounded-lg font-medium transition-colors cursor-pointer ${
                   filterStatus === s ? 'bg-[#6E1731] text-white shadow-xs' : 'text-[#5B534C] hover:bg-[#F4EFE4]'
                 }`}
@@ -105,9 +153,25 @@ export default function TawtheeqView() {
           </div>
 
           {/* Table */}
-          <div className="bg-white border border-[#E4DCCB] rounded-2xl overflow-hidden shadow-sm">
+          <div className="bg-white border border-[#E4DCCB] rounded-2xl overflow-hidden shadow-sm relative">
+            {isFetching && registrations.length > 0 && (
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#FBF9F3] z-20">
+                <div className="h-full bg-[#B9924A] animate-pulse w-1/3"></div>
+              </div>
+            )}
+            
             {isLoading ? (
-              <div className="flex items-center justify-center h-48 text-[#8B8279] text-sm">Loading registrations…</div>
+              <div className="p-4 space-y-4">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <div key={i} className="flex gap-4 items-center">
+                    <div className="w-24 h-4 bg-slate-200 rounded animate-pulse"></div>
+                    <div className="w-32 h-4 bg-slate-200 rounded animate-pulse"></div>
+                    <div className="w-24 h-4 bg-slate-200 rounded animate-pulse"></div>
+                    <div className="w-20 h-4 bg-slate-200 rounded animate-pulse"></div>
+                    <div className="w-16 h-4 bg-slate-200 rounded animate-pulse"></div>
+                  </div>
+                ))}
+              </div>
             ) : registrations.length === 0 ? (
               <div className="p-8">
                 <EmptyState
@@ -117,10 +181,10 @@ export default function TawtheeqView() {
                 />
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div ref={parentRef} className="overflow-x-auto max-h-[600px] relative custom-scrollbar">
                 <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[#E4DCCB] bg-[#FBF9F3]">
+                  <thead className="sticky top-0 z-10 bg-[#FBF9F3] shadow-sm">
+                    <tr className="border-b border-[#E4DCCB]">
                       <th className="py-3.5 px-4 text-left text-xs font-semibold text-[#5B534C] uppercase tracking-wider">Tawtheeq #</th>
                       <th className="py-3.5 px-4 text-left text-xs font-semibold text-[#5B534C] uppercase tracking-wider">Property / Unit</th>
                       <th className="py-3.5 px-4 text-left text-xs font-semibold text-[#5B534C] uppercase tracking-wider">Tenant</th>
@@ -131,75 +195,107 @@ export default function TawtheeqView() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#E4DCCB]">
-                    {registrations.map((r) => {
-                      const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG['DRAFT'];
-                      const Icon = cfg.icon;
-                      return (
-                        <tr key={r.id} className="hover:bg-[#FBF9F3]/70 transition-colors">
-                          <td className="py-3 px-4">
-                            <span className="font-mono text-[#B9924A] text-xs font-bold">{r.registrationNumber}</span>
-                            <p className="text-[#8B8279] text-[10px]">Filed: {formatDate(r.registeredAt)}</p>
-                          </td>
-                          <td className="py-3 px-4">
-                            <p className="text-[#221E1C] text-xs font-medium">{r.lease?.unit?.property?.name}</p>
-                            <p className="text-[#8B8279] text-[10px]">Unit {r.lease?.unit?.unitNumber}</p>
-                          </td>
-                          <td className="py-3 px-4">
-                            <p className="text-[#221E1C] text-xs">{r.lease?.tenant?.name}</p>
-                            <p className="text-[#8B8279] text-[10px]">{r.lease?.tenant?.phone}</p>
-                          </td>
-                          <td className="py-3 px-4 text-[#5B534C] text-xs">
-                            {formatDate(r.contractDate)} → {formatDate(r.expiryDate)}
-                          </td>
-                          <td className="py-3 px-4 text-emerald-700 font-semibold text-xs">
-                            {formatQAR(Number(r.municipalityFee))}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
-                              <Icon size={10} />
-                              {cfg.label}
-                            </span>
-                            <p className="text-[#8B8279] text-[10px] mt-0.5">{cfg.labelAr}</p>
-                          </td>
-                          <td className="py-3 px-4 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {r.status === 'DRAFT' && (
-                                <button
-                                  onClick={() => statusMutation.mutate({ id: r.id, status: 'SUBMITTED' })}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
-                                  title="Submit to Ministry of Justice"
-                                >
-                                  <Send size={10} />
-                                  Submit
-                                </button>
-                              )}
-                              {(r.status === 'SUBMITTED' || r.status === 'PENDING_APPROVAL') && (
-                                <>
-                                  <button
-                                    onClick={() => statusMutation.mutate({ id: r.id, status: 'APPROVED' })}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
-                                    title="Mark Approved by MOJ"
-                                  >
-                                    <Check size={11} />
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={() => statusMutation.mutate({ id: r.id, status: 'REJECTED' })}
-                                    className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
-                                    title="Reject"
-                                  >
-                                    <Ban size={10} />
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {virtualItems.length > 0 && (
+                      <>
+                        <tr style={{ height: virtualItems[0].start }} />
+                        {virtualItems.map((virtualRow) => {
+                          const r = registrations[virtualRow.index];
+                          const cfg = STATUS_CONFIG[r.status] || STATUS_CONFIG['DRAFT'];
+                          const Icon = cfg.icon;
+                          return (
+                            <tr key={r.id} ref={rowVirtualizer.measureElement} data-index={virtualRow.index} className="hover:bg-[#FBF9F3]/70 transition-colors">
+                              <td className="py-3 px-4">
+                                <span className="font-mono text-[#B9924A] text-xs font-bold">{r.registrationNumber}</span>
+                                <p className="text-[#8B8279] text-[10px]">Filed: {formatDate(r.registeredAt)}</p>
+                              </td>
+                              <td className="py-3 px-4">
+                                <p className="text-[#221E1C] text-xs font-medium">{r.lease?.unit?.property?.name}</p>
+                                <p className="text-[#8B8279] text-[10px]">Unit {r.lease?.unit?.unitNumber}</p>
+                              </td>
+                              <td className="py-3 px-4">
+                                <p className="text-[#221E1C] text-xs">{r.lease?.tenant?.name}</p>
+                                <p className="text-[#8B8279] text-[10px]">{r.lease?.tenant?.phone}</p>
+                              </td>
+                              <td className="py-3 px-4 text-[#5B534C] text-xs">
+                                {formatDate(r.contractDate)} → {formatDate(r.expiryDate)}
+                              </td>
+                              <td className="py-3 px-4 text-emerald-700 font-semibold text-xs">
+                                {formatQAR(Number(r.municipalityFee))}
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${cfg.bg} ${cfg.text} ${cfg.border}`}>
+                                  <Icon size={10} />
+                                  {cfg.label}
+                                </span>
+                                <p className="text-[#8B8279] text-[10px] mt-0.5">{cfg.labelAr}</p>
+                              </td>
+                              <td className="py-3 px-4 text-right">
+                                <div className="flex items-center justify-end gap-1.5">
+                                  {r.status === 'DRAFT' && (
+                                    <button
+                                      onClick={() => statusMutation.mutate({ id: r.id, status: 'SUBMITTED' })}
+                                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                                      title="Submit to Ministry of Justice"
+                                    >
+                                      <Send size={10} />
+                                      Submit
+                                    </button>
+                                  )}
+                                  {(r.status === 'SUBMITTED' || r.status === 'PENDING_APPROVAL') && (
+                                    <>
+                                      <button
+                                        onClick={() => statusMutation.mutate({ id: r.id, status: 'APPROVED' })}
+                                        className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                                        title="Mark Approved by MOJ"
+                                      >
+                                        <Check size={11} />
+                                        Approve
+                                      </button>
+                                      <button
+                                        onClick={() => statusMutation.mutate({ id: r.id, status: 'REJECTED' })}
+                                        className="inline-flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-lg text-[11px] font-medium transition-colors cursor-pointer"
+                                        title="Reject"
+                                      >
+                                        <Ban size={10} />
+                                        Reject
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        <tr style={{ height: rowVirtualizer.getTotalSize() - virtualItems[virtualItems.length - 1].end }} />
+                      </>
+                    )}
                   </tbody>
                 </table>
+              </div>
+            )}
+            
+            {/* Pagination Footer */}
+            {tawtheeqData && tawtheeqData.totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-[#E4DCCB] bg-[#FBF9F3]">
+                <p className="text-xs text-[#5B534C]">
+                  Showing <span className="font-semibold text-[#221E1C]">{(page - 1) * limit + 1}</span> to <span className="font-semibold text-[#221E1C]">{Math.min(page * limit, tawtheeqData.total)}</span> of <span className="font-semibold text-[#221E1C]">{tawtheeqData.total}</span> entries
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => updateParam('page', String(page - 1))}
+                    disabled={page <= 1}
+                    className="p-1.5 rounded-lg border border-[#E4DCCB] bg-white text-[#5B534C] hover:bg-[#F4EFE4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <button
+                    onClick={() => updateParam('page', String(page + 1))}
+                    disabled={page >= tawtheeqData.totalPages}
+                    className="p-1.5 rounded-lg border border-[#E4DCCB] bg-white text-[#5B534C] hover:bg-[#F4EFE4] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -259,19 +355,31 @@ export default function TawtheeqView() {
           {/* Summary Stats */}
           <div className="bg-white border border-[#E4DCCB] rounded-2xl p-5 space-y-3 shadow-sm">
             <p className="text-xs text-[#5B534C] font-semibold uppercase tracking-wider">Registration Summary</p>
-            {Object.entries(STATUS_CONFIG).map(([status, cfg]) => {
-              const count = data?.filter(r => r.status === status).length || 0;
-              if (count === 0) return null;
-              const Icon = cfg.icon;
+            {[
+              { key: 'total', label: 'Total Registrations', icon: ScrollText, color: 'text-slate-600' },
+              { key: 'approved', label: 'Approved', icon: CheckCircle2, color: 'text-emerald-700' },
+              { key: 'pending', label: 'Pending', icon: Clock, color: 'text-amber-700' },
+              { key: 'expired', label: 'Expired', icon: XCircle, color: 'text-red-700' }
+            ].map((stat) => {
+              const val = summaryData?.[stat.key];
+              if (val === undefined) return null;
+              const Icon = stat.icon;
               return (
-                <div key={status} className="flex items-center justify-between py-1 border-b border-[#EDE8DE] last:border-0">
-                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${cfg.text}`}>
-                    <Icon size={12} /> {cfg.label}
+                <div key={stat.key} className="flex items-center justify-between py-1 border-b border-[#EDE8DE] last:border-0">
+                  <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${stat.color}`}>
+                    <Icon size={12} /> {stat.label}
                   </span>
-                  <span className="text-[#221E1C] text-xs font-bold px-2 py-0.5 bg-[#F4F1EA] rounded-md">{count}</span>
+                  <span className="text-[#221E1C] text-xs font-bold px-2 py-0.5 bg-[#F4F1EA] rounded-md">{val}</span>
                 </div>
               );
             })}
+            {!summaryData && (
+              <div className="animate-pulse space-y-2">
+                <div className="h-4 bg-slate-200 rounded w-full"></div>
+                <div className="h-4 bg-slate-200 rounded w-5/6"></div>
+                <div className="h-4 bg-slate-200 rounded w-4/6"></div>
+              </div>
+            )}
           </div>
         </div>
       </div>

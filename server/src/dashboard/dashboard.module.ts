@@ -1,54 +1,55 @@
 import { Module, Injectable, Controller, Get, UseGuards } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { JwtAuthGuard, CurrentUser } from '../auth/auth.module.js';
+import { RedisService } from '../redis/redis.service.js';
 
 @Injectable()
 export class DashboardService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
 
   async getKpis(agencyId: string) {
-    const units = await this.prisma.unit.findMany({
-      where: { property: { agencyId } },
-    });
+    const cacheKey = `agency:${agencyId}:kpis`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return cached;
 
-    const totalUnits = units.length || 0;
-    const occupiedUnits = units.filter((u: any) => u.status === 'OCCUPIED').length;
+    const [unitStats, activeLeasesAgg, pendingTickets, renewalsDue] = await Promise.all([
+      this.prisma.unit.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+        where: { property: { agencyId } },
+      }),
+      this.prisma.lease.aggregate({
+        _sum: { rentAmount: true },
+        where: {
+          unit: { property: { agencyId } },
+          status: { in: ['ACTIVE', 'RENEWAL_PENDING'] },
+        },
+      }),
+      this.prisma.maintenanceRequest.count({
+        where: {
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+          unit: { property: { agencyId } },
+        },
+      }),
+      this.prisma.lease.count({
+        where: {
+          unit: { property: { agencyId } },
+          OR: [
+            { status: 'RENEWAL_PENDING' },
+            {
+              endDate: { gte: new Date(), lte: new Date(new Date().setDate(new Date().getDate() + 30)) },
+              status: 'ACTIVE',
+            },
+          ],
+        },
+      }),
+    ]);
+    const totalUnits = unitStats.reduce((sum, s) => sum + s._count._all, 0);
+    const occupiedUnits = unitStats.find(s => s.status === 'OCCUPIED')?._count._all || 0;
     const occupancyRate = totalUnits > 0 ? Number(((occupiedUnits / totalUnits) * 100).toFixed(1)) : 0;
+    const monthlyRevenueQar = activeLeasesAgg._sum.rentAmount?.toNumber() || 0;
 
-    const activeLeases = await this.prisma.lease.findMany({
-      where: {
-        unit: { property: { agencyId } },
-        status: { in: ['ACTIVE', 'RENEWAL_PENDING'] },
-      },
-    });
-
-    const monthlyRevenueQar = activeLeases.reduce((sum: number, l: any) => sum + Number(l.rentAmount), 0);
-
-    const pendingTickets = await this.prisma.maintenanceRequest.count({
-      where: {
-        status: { in: ['OPEN', 'IN_PROGRESS'] },
-        unit: { property: { agencyId } },
-      },
-    });
-
-    const now = new Date();
-    const in30Days = new Date();
-    in30Days.setDate(now.getDate() + 30);
-
-    const renewalsDue = await this.prisma.lease.count({
-      where: {
-        unit: { property: { agencyId } },
-        OR: [
-          { status: 'RENEWAL_PENDING' },
-          {
-            endDate: { gte: now, lte: in30Days },
-            status: 'ACTIVE',
-          },
-        ],
-      },
-    });
-
-    return {
+    const result = {
       occupancyRate,
       totalUnits,
       occupiedUnits,
@@ -56,31 +57,44 @@ export class DashboardService {
       pendingMaintenanceCount: pendingTickets,
       renewalsDueCount: renewalsDue,
     };
+
+    await this.redis.set(cacheKey, result, 60);
+    return result;
   }
 
   async getRevenueChart(agencyId: string) {
+    const cacheKey = `agency:${agencyId}:revenue-chart`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return cached;
+
     const months = ['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar'];
-    const activeLeases = await this.prisma.lease.findMany({
-      where: { unit: { property: { agencyId } } },
-    });
-    const monthlyProjected = activeLeases.reduce((sum: number, l: any) => sum + Number(l.rentAmount), 0) || 85000;
+    const [projectedAgg, collectedAgg] = await Promise.all([
+      this.prisma.lease.aggregate({
+        _sum: { rentAmount: true },
+        where: { unit: { property: { agencyId } }, status: { in: ['ACTIVE', 'RENEWAL_PENDING'] } },
+      }),
+      this.prisma.payment.aggregate({
+        _sum: { amount: true },
+        where: {
+          lease: { unit: { property: { agencyId } } },
+          status: 'PAID' as any,
+          paidDate: { gte: new Date(new Date().setMonth(new Date().getMonth() - 6)) },
+        },
+      }),
+    ]);
 
-    const payments = await this.prisma.payment.findMany({
-      where: {
-        lease: { unit: { property: { agencyId } } },
-        status: 'PAID' as any,
-      },
-      orderBy: { paidDate: 'asc' },
-    });
+    const monthlyProjected = projectedAgg._sum.rentAmount?.toNumber() || 85000;
+    const totalCollected = collectedAgg._sum.amount?.toNumber() || 0;
+    const avgCollectedPerMonth = totalCollected > 0 ? Math.round(totalCollected / 6) : 80000;
 
-    const totalCollected = payments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
-    const avgCollectedPerMonth = payments.length > 0 ? Math.round(totalCollected / 6) : 80000;
-
-    return months.map((month, idx) => ({
+    const result = months.map((month, idx) => ({
       month,
       collectedQar: Math.round(avgCollectedPerMonth * (0.92 + idx * 0.03)),
       projectedQar: Math.round(monthlyProjected * (0.98 + idx * 0.01)),
     }));
+
+    await this.redis.set(cacheKey, result, 60);
+    return result;
   }
 }
 

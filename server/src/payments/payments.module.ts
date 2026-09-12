@@ -14,10 +14,11 @@ import {
 import { PrismaService } from '../prisma/prisma.service.js';
 import { JwtAuthGuard, CurrentUser, RequirePermission, PermissionGuard } from '../auth/auth.module.js';
 import { PaymentStatus } from '@prisma/client';
+import { RedisService } from '../redis/redis.service.js';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
 
   async findAll(agencyId: string, query: any = {}) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
@@ -114,22 +115,23 @@ export class PaymentsService {
   }
 
   async getSummary(agencyId: string) {
-    const payments = await this.prisma.payment.findMany({
+    const cacheKey = `agency:${agencyId}:summary:payments`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return cached;
+
+    const stats = await this.prisma.payment.groupBy({
+      by: ['status'],
+      _sum: { amount: true },
       where: { lease: { unit: { property: { agencyId } } } },
     });
 
-    let collectedQar = 0;
-    let outstandingQar = 0;
-    let overdueQar = 0;
+    const collectedQar = stats.find(s => s.status === 'PAID')?._sum.amount?.toNumber() || 0;
+    const outstandingQar = stats.find(s => s.status === 'PENDING')?._sum.amount?.toNumber() || 0;
+    const overdueQar = stats.find(s => s.status === 'OVERDUE')?._sum.amount?.toNumber() || 0;
 
-    for (const p of payments) {
-      const amt = Number(p.amount);
-      if (p.status === PaymentStatus.PAID) collectedQar += amt;
-      else if (p.status === PaymentStatus.PENDING) outstandingQar += amt;
-      else if (p.status === PaymentStatus.OVERDUE) overdueQar += amt;
-    }
-
-    return { collectedQar, outstandingQar, overdueQar };
+    const result = { collectedQar, outstandingQar, overdueQar };
+    await this.redis.set(cacheKey, result, 60);
+    return result;
   }
 
   async markPaid(paymentId: string, agencyId: string) {
@@ -138,30 +140,40 @@ export class PaymentsService {
     });
     if (!payment) throw new NotFoundException('Payment not found.');
 
-    return this.prisma.payment.update({
+    const updated = await this.prisma.payment.update({
       where: { id: paymentId },
       data: {
         status: PaymentStatus.PAID,
         paidDate: new Date(),
       },
     });
+    await this.redis.del(`agency:${agencyId}:summary:payments`);
+    await this.redis.del(`agency:${agencyId}:kpis`);
+    await this.redis.del(`agency:${agencyId}:revenue-chart`);
+    await this.redis.del(`agency:${agencyId}:reports:revenue`);
+    return updated;
   }
 
   async create(agencyId: string, data: any) {
     const lease = await this.prisma.lease.findFirst({
       where: { id: data.leaseId, unit: { property: { agencyId } } },
     });
-    if (!lease) throw new NotFoundException('Lease not found.');
+    if (!lease) throw new NotFoundException('Lease not found in this agency.');
 
-    return this.prisma.payment.create({
+    const p = await this.prisma.payment.create({
       data: {
         leaseId: data.leaseId,
-        amount: data.amount || data.amountQar,
-        dueDate: data.dueDate ? new Date(data.dueDate) : new Date(),
-        methodListItemId: data.methodListItemId,
+        amount: data.amount,
+        dueDate: new Date(data.dueDate),
         status: data.status || PaymentStatus.PENDING,
+        methodListItemId: data.methodListItemId,
       },
     });
+    await this.redis.del(`agency:${agencyId}:summary:payments`);
+    await this.redis.del(`agency:${agencyId}:kpis`);
+    await this.redis.del(`agency:${agencyId}:revenue-chart`);
+    await this.redis.del(`agency:${agencyId}:reports:revenue`);
+    return p;
   }
 }
 
@@ -193,7 +205,7 @@ export class PaymentsController {
   async updatePayment(
     @Param('id') id: string,
     @CurrentUser() user: any,
-    @Body() body: any,
+    @Body() _body: any,
   ) {
     return this.service.markPaid(id, user.agencyId);
   }

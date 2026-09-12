@@ -62,19 +62,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (typeof user.role === 'string') {
       const r = (user.role as string).toUpperCase();
       if (r.includes('OWNER') || r.includes('ADMIN')) return true;
-      return true;
+      // Non-owner/admin string roles: deny by default (fail-closed)
+      return false;
     }
     // Check role object
     if (user.role && typeof user.role === 'object') {
       const roleName = (user.role.name || '').toLowerCase();
       if (roleName.includes('owner') || roleName.includes('admin')) return true;
       let perms = user.role.permissions;
-      if (!perms) return true;
+      // Missing or null permissions = deny (fail-closed, not fail-open)
+      if (!perms) return false;
       if (typeof perms === 'string') {
         try {
           perms = JSON.parse(perms);
         } catch {
-          return true;
+          // Malformed permissions JSON = deny
+          return false;
         }
       }
       if (Array.isArray(perms[module])) {
@@ -82,7 +85,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       }
       return Boolean(perms[module]?.[action] || perms[module]?.['*']);
     }
-    return true;
+    // Unknown role shape = deny (fail-closed)
+    return false;
   },
 }));
 

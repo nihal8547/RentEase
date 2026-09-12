@@ -29,6 +29,7 @@ const OwnerPayoutsView = React.lazy(() => import('./views/OwnerPayoutsView'));
 const ResetPasswordView = React.lazy(() => import('./views/ResetPasswordView'));
 const NotFoundView = React.lazy(() => import('./views/NotFoundView'));
 const NotAuthorizedView = React.lazy(() => import('./views/NotAuthorizedView'));
+const ServerErrorView = React.lazy(() => import('./views/ServerErrorView'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,6 +140,7 @@ export function App() {
                 <Route path="owner-payouts" element={<RouteGuard module="payments"><OwnerPayoutsView /></RouteGuard>} />
               </Route>
 
+              <Route path="/500" element={<ServerErrorView />} />
               <Route path="*" element={<NotFoundView />} />
             </Routes>
           </Suspense>

@@ -81,22 +81,18 @@ export const SettingsView: React.FC = () => {
   const { agency } = useAuthStore();
   
   const pathParts = location.pathname.split('/');
-  const tabFromUrl = (pathParts[2] as SettingsTab) || 'profile';
+  const activeTab = (pathParts[2] as SettingsTab) || 'profile';
   
-  const [activeTab, setActiveTab] = useState<SettingsTab>(tabFromUrl);
   const [memberToDelete, setMemberToDelete] = useState<any>(null);
   const [listItemToDelete, setListItemToDelete] = useState<any>(null);
   
   useEffect(() => {
     if (location.pathname === '/settings' || location.pathname === '/settings/') {
       navigate('/settings/profile', { replace: true });
-    } else if (tabFromUrl && tabFromUrl !== activeTab) {
-      setActiveTab(tabFromUrl);
     }
-  }, [location.pathname, tabFromUrl, navigate, activeTab]);
+  }, [location.pathname, navigate]);
 
   const handleTabChange = (tab: SettingsTab) => {
-    setActiveTab(tab);
     navigate(`/settings/${tab}`);
   };
 
@@ -207,7 +203,7 @@ export const SettingsView: React.FC = () => {
     if (selectedRole?.isSystem || selectedRole?.isSystemRole) return; // Protected
     let current = rolePermissionsMatrix[moduleName] || [];
     if (typeof current === 'object' && !Array.isArray(current)) {
-      current = Object.keys(current).filter((k) => current[k] === true);
+      current = Object.keys(current).filter((k) => (current as Record<string, any>)[k] === true);
     } else if (typeof current === 'string') {
       current = [current];
     } else if (typeof current === 'boolean') {
@@ -868,7 +864,7 @@ export const SettingsView: React.FC = () => {
                         {MODULES.map((mod) => {
                           let permittedActions = rolePermissionsMatrix[mod] || [];
                           if (typeof permittedActions === 'object' && !Array.isArray(permittedActions)) {
-                            permittedActions = Object.keys(permittedActions).filter((k) => permittedActions[k] === true);
+                            permittedActions = Object.keys(permittedActions).filter((k) => (permittedActions as Record<string, any>)[k] === true);
                           } else if (typeof permittedActions === 'string') {
                             permittedActions = [permittedActions];
                           } else if (typeof permittedActions === 'boolean') {

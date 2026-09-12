@@ -19,7 +19,7 @@ model SubscriptionPlan {
   id        String   @id @default(uuid())
   name      String   // "Freemium" | "Starter" | "Agency" | "Enterprise"
   priceQar  Decimal
-  unitLimit Int
+  unitLimit Int?     // null = unlimited (Enterprise plan)
   agencies  Agency[]
 
   @@map("subscription_plans")
@@ -40,7 +40,7 @@ model Agency {
   address           String?
   planId            String
   plan              SubscriptionPlan @relation(fields: [planId], references: [id])
-  unitLimit         Int              @default(5)
+  unitLimit         Int?             // null = unlimited
   billingStatus     BillingStatus    @default(ACTIVE)
   currentPeriodEnd  DateTime?
   cancelAtPeriodEnd Boolean          @default(false)
@@ -205,7 +205,7 @@ model Tenant {
   agencyId              String
   agency                Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
   name                  String
-  email                 String
+  email                 String               // Unique per agency (different agencies may share tenant email)
   phone                 String
   nationalityListItemId String?              // FK -> ListItem (key = "nationality")
   createdAt             DateTime             @default(now())
@@ -214,6 +214,7 @@ model Tenant {
   maintenanceRequests   MaintenanceRequest[]
   documents             Document[]
 
+  @@unique([agencyId, email])  // Prevent duplicate tenant email within the same agency
   @@index([agencyId])
   @@map("tenants")
 }
@@ -247,6 +248,7 @@ model Lease {
 
   @@index([unitId])
   @@index([tenantId])
+  @@index([status])
   @@map("leases")
 }
 
@@ -293,6 +295,8 @@ model Payment {
   createdAt        DateTime      @default(now())
 
   @@index([leaseId])
+  @@index([status])
+  @@index([dueDate])
   @@map("payments")
 }
 
@@ -349,6 +353,7 @@ model MaintenanceRequest {
   @@index([unitId])
   @@index([tenantId])
   @@index([vendorId])
+  @@index([status])
   @@map("maintenance_requests")
 }
 
@@ -464,6 +469,7 @@ model Cheque {
 
   @@index([leaseId])
   @@index([status])
+  @@index([dueDate])
   @@map("cheques")
 }
 
@@ -533,6 +539,8 @@ model Inspection {
 
   @@index([unitId])
   @@index([leaseId])
+  @@index([status])
+  @@index([type])
   @@map("inspections")
 }
 
@@ -565,6 +573,7 @@ model OwnerPayout {
 
   @@index([agencyId])
   @@index([propertyId])
+  @@index([status])
   @@map("owner_payouts")
 }
 
@@ -592,6 +601,7 @@ model CommunicationLog {
   createdAt      DateTime    @default(now())
 
   @@index([agencyId])
+  @@index([channel])
   @@map("communication_logs")
 }
 

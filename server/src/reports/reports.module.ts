@@ -2,24 +2,31 @@ import { Module, Injectable, Controller, Get, Query, UseGuards, Res } from '@nes
 import type { Response } from 'express';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { JwtAuthGuard, CurrentUser, RequirePermission, PermissionGuard } from '../auth/auth.module.js';
-
+import { RedisService } from '../redis/redis.service.js';
 
 @Injectable()
 export class ReportsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
 
-  async getOccupancyReport(agencyId: string, dateFrom?: string, dateTo?: string) {
-    const properties = await this.prisma.property.findMany({
-      where: { agencyId },
-      include: {
-        units: true,
-      },
-    });
+  async getOccupancyReport(agencyId: string, _dateFrom?: string, _dateTo?: string) {
+    const cacheKey = `agency:${agencyId}:reports:occupancy`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return cached;
 
-    return properties.map((p) => {
-      const totalUnits = p.units.length;
-      const occupied = p.units.filter((u) => (u.status as string) === 'OCCUPIED').length;
-      const vacant = p.units.filter((u) => (u.status as string) === 'VACANT').length;
+    const [properties, unitStats] = await Promise.all([
+      this.prisma.property.findMany({ where: { agencyId }, select: { id: true, name: true, area: true } }),
+      this.prisma.unit.groupBy({
+        by: ['propertyId', 'status'],
+        _count: { _all: true },
+        where: { property: { agencyId } },
+      }),
+    ]);
+
+    const result = properties.map((p) => {
+      const pStats = unitStats.filter((s) => s.propertyId === p.id);
+      const occupied = pStats.find((s) => s.status === 'OCCUPIED')?._count._all || 0;
+      const vacant = pStats.find((s) => s.status === 'VACANT')?._count._all || 0;
+      const totalUnits = pStats.reduce((acc, curr) => acc + curr._count._all, 0);
       const rate = totalUnits > 0 ? ((occupied / totalUnits) * 100).toFixed(1) : '0.0';
 
       return {
@@ -32,9 +39,16 @@ export class ReportsService {
         occupancyRate: `${rate}%`,
       };
     });
+
+    await this.redis.set(cacheKey, result, 60);
+    return result;
   }
 
-  async getRevenueReport(agencyId: string, query: { dateFrom?: string; dateTo?: string; propertyId?: string }) {
+  async getRevenueReport(agencyId: string, query: { dateFrom?: string; dateTo?: string; propertyId?: string; page?: string; limit?: string; sort?: string }) {
+    const page = Math.max(1, parseInt(query.page || '1', 10));
+    const limit = Math.max(1, parseInt(query.limit || '10', 10));
+    const skip = (page - 1) * limit;
+
     const where: any = {
       lease: { unit: { property: { agencyId } } },
     };
@@ -49,36 +63,51 @@ export class ReportsService {
       if (query.dateTo) where.dueDate.lte = new Date(query.dateTo);
     }
 
-    const payments = await this.prisma.payment.findMany({
-      where,
-      include: {
-        lease: {
-          include: {
-            tenant: true,
-            unit: { include: { property: true } },
+    let orderBy: any = { dueDate: 'desc' };
+    if (query.sort) {
+      const [field, direction] = query.sort.split(':');
+      if (field && direction) orderBy = { [field]: direction };
+    }
+
+    const [total, payments] = await Promise.all([
+      this.prisma.payment.count({ where }),
+      this.prisma.payment.findMany({
+        where,
+        include: {
+          lease: {
+            include: {
+              tenant: { select: { name: true } },
+              unit: { select: { unitNumber: true, property: { select: { name: true } } } },
+            },
           },
         },
-      },
-      orderBy: { dueDate: 'desc' },
-    });
+        orderBy,
+        skip,
+        take: limit,
+      }),
+    ]);
 
-    return payments.map((p) => ({
+    const data = payments.map((p) => ({
       id: p.id,
       invoiceNo: `INV-2026-${p.id.slice(0, 6).toUpperCase()}`,
-      property: p.lease.unit.property.name,
-      unit: p.lease.unit.unitNumber,
-      tenant: p.lease.tenant.name,
+      property: p.lease?.unit?.property?.name,
+      unit: p.lease?.unit?.unitNumber,
+      tenant: p.lease?.tenant?.name,
       amountQar: Number(p.amount),
       dueDate: p.dueDate.toISOString().slice(0, 10),
       paidDate: p.paidDate ? p.paidDate.toISOString().slice(0, 10) : null,
       status: p.status,
     }));
+
+    return { data, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async getMaintenanceCostReport(agencyId: string, dateFrom?: string, dateTo?: string) {
-    const where: any = {
-      property: { agencyId },
-    };
+    const cacheKey = `agency:${agencyId}:reports:maintenance_cost:${dateFrom || 'all'}:${dateTo || 'all'}`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return cached;
+
+    const where: any = { property: { agencyId } };
 
     if (dateFrom || dateTo) {
       where.incurredOn = {};
@@ -86,42 +115,38 @@ export class ReportsService {
       if (dateTo) where.incurredOn.lte = new Date(dateTo);
     }
 
-    const expenses = await this.prisma.expense.findMany({
-      where,
-      include: {
-        property: true,
-      },
-    });
+    const [properties, stats] = await Promise.all([
+      this.prisma.property.findMany({ where: { agencyId }, select: { id: true, name: true } }),
+      this.prisma.expense.groupBy({
+        by: ['propertyId'],
+        _sum: { amount: true },
+        _count: { _all: true },
+        where,
+      }),
+    ]);
 
-    const propMap = new Map<string, { property: string; totalExpenses: number; count: number }>();
-
-    for (const exp of expenses) {
-      const existing = propMap.get(exp.propertyId) || {
-        property: exp.property.name,
-        totalExpenses: 0,
-        count: 0,
+    const result = properties.map((p) => {
+      const s = stats.find((stat) => stat.propertyId === p.id);
+      return {
+        propertyId: p.id,
+        property: p.name,
+        outlayQar: s?._sum.amount?.toNumber() || 0,
+        expenseCount: s?._count._all || 0,
       };
-      existing.totalExpenses += Number(exp.amount);
-      existing.count += 1;
-      propMap.set(exp.propertyId, existing);
-    }
+    }).filter(r => r.expenseCount > 0);
 
-    return Array.from(propMap.entries()).map(([propertyId, val]) => ({
-      propertyId,
-      property: val.property,
-      outlayQar: val.totalExpenses,
-      expenseCount: val.count,
-    }));
+    await this.redis.set(cacheKey, result, 60);
+    return result;
   }
 
-  async getPreview(agencyId: string, reportType: string, dateRange?: string) {
+  async getPreview(agencyId: string, reportType: string, _dateRange?: string) {
     if (reportType === 'OCCUPANCY') {
       return this.getOccupancyReport(agencyId);
     }
 
     if (reportType === 'MAINTENANCE_COST') {
       const costs = await this.getMaintenanceCostReport(agencyId);
-      if (costs.length > 0) return costs;
+      if ((costs as any[]).length > 0) return costs;
       return [
         {
           property: 'Porto Arabia Tower 12',
@@ -279,7 +304,7 @@ export class ReportsController {
 
     if (type === 'occupancy') {
       const data = await this.reportsService.getOccupancyReport(user.agencyId, dateFrom, dateTo);
-      rows = data.map((r: any) => ({
+      rows = (data as any[]).map((r: any) => ({
         Property: r.property,
         Area: r.area,
         'Total Units': r.totalUnits,
@@ -289,9 +314,9 @@ export class ReportsController {
       }));
       filename = 'occupancy-report';
     } else if (type === 'revenue') {
-      const data = await this.reportsService.getRevenueReport(user.agencyId, { dateFrom, dateTo });
-      rows = (data as any).payments?.map((p: any) => ({
-        Tenant: p.tenantName,
+      const resData = await this.reportsService.getRevenueReport(user.agencyId, { dateFrom, dateTo });
+      rows = (resData.data as any[]).map((p: any) => ({
+        Tenant: p.tenant,
         Property: p.property,
         Unit: p.unit,
         Amount: p.amount,

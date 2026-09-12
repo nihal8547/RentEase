@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   X,
   Plus,
@@ -21,12 +22,20 @@ export const PaymentsView: React.FC = () => {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
 
-  // Search & Pagination
-  const [searchTerm, setSearchTerm] = useState('');
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
-  const [statusFilter, setStatusFilter] = useState('');
-  const [methodFilter, setMethodFilter] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = parseInt(searchParams.get('limit') || '10', 10);
+  const searchTerm = searchParams.get('search') || '';
+  const statusFilter = searchParams.get('status') || '';
+  const methodFilter = searchParams.get('method') || '';
+
+  const updateParam = (key: string, value: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (value) newParams.set(key, value);
+    else newParams.delete(key);
+    if (key !== 'page') newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
 
   // Modals & States
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
@@ -325,7 +334,7 @@ export const PaymentsView: React.FC = () => {
             <ComboBoxWithAddNew
               listTypeKey="payment_methods"
               value={methodFilter}
-              onChange={setMethodFilter}
+              onChange={(val) => updateParam('method', val)}
               placeholder="Filter Method..."
               allowAddNew={false}
             />
@@ -333,7 +342,7 @@ export const PaymentsView: React.FC = () => {
 
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => updateParam('status', e.target.value)}
             className="text-xs px-3 py-2 bg-sand-050 border border-line rounded focus:outline-none focus:border-maroon-700"
           >
             <option value="">All Statuses</option>
@@ -347,8 +356,11 @@ export const PaymentsView: React.FC = () => {
             <Button
               variant="ghost"
               onClick={() => {
-                setMethodFilter('');
-                setStatusFilter('');
+                const newParams = new URLSearchParams(searchParams);
+                newParams.delete('method');
+                newParams.delete('status');
+                newParams.set('page', '1');
+                setSearchParams(newParams);
               }}
             >
               Clear Filters
@@ -364,16 +376,10 @@ export const PaymentsView: React.FC = () => {
         total={data?.total || 0}
         page={page}
         limit={limit}
-        onPageChange={setPage}
-        onLimitChange={(l: number) => {
-          setLimit(l);
-          setPage(1);
-        }}
+        onPageChange={(p) => updateParam('page', String(p))}
+        onLimitChange={(l: number) => updateParam('limit', String(l))}
         searchPlaceholder="Search by invoice reference, tenant, or unit..."
-        onSearchChange={(q: string) => {
-          setSearchTerm(q);
-          setPage(1);
-        }}
+        onSearchChange={(q: string) => updateParam('search', q)}
         isLoading={isLoading}
         emptyState={
           <div className="flex flex-col items-center justify-center p-8 text-center bg-white rounded-lg border border-dashed border-[#E4DCCB]">

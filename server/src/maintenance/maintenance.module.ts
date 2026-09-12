@@ -13,10 +13,32 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { JwtAuthGuard, CurrentUser, RequirePermission, PermissionGuard } from '../auth/auth.module.js';
+import { RedisService } from '../redis/redis.service.js';
 
 @Injectable()
 export class MaintenanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private redis: RedisService) {}
+
+  async getSummary(agencyId: string) {
+    const cacheKey = `agency:${agencyId}:summary:maintenance`;
+    const cached = await this.redis.get(cacheKey);
+    if (cached) return cached;
+
+    const stats = await this.prisma.maintenanceRequest.groupBy({
+      by: ['status'],
+      _count: { _all: true },
+      where: { unit: { property: { agencyId } } },
+    });
+
+    const total = stats.reduce((acc, curr) => acc + curr._count._all, 0);
+    const open = stats.find(s => s.status === 'OPEN')?._count._all || 0;
+    const inProgress = stats.find(s => s.status === 'IN_PROGRESS')?._count._all || 0;
+    const resolved = stats.find(s => s.status === 'COMPLETED')?._count._all || 0;
+
+    const result = { total, open, inProgress, resolved };
+    await this.redis.set(cacheKey, result, 60);
+    return result;
+  }
 
   async findAll(agencyId: string, query: any = {}) {
     const page = Math.max(1, parseInt(query.page || '1', 10));
@@ -125,7 +147,7 @@ export class MaintenanceService {
     });
     if (!unit) throw new NotFoundException('Unit not found.');
 
-    return this.prisma.maintenanceRequest.create({
+    const req = await this.prisma.maintenanceRequest.create({
       data: {
         title: data.title,
         description: data.description || '',
@@ -137,6 +159,10 @@ export class MaintenanceService {
         vendorId: data.vendorId || null,
       },
     });
+    await this.redis.del(`agency:${agencyId}:summary:maintenance`);
+    await this.redis.del(`agency:${agencyId}:kpis`);
+    await this.redis.del(`agency:${agencyId}:reports:maintenance`);
+    return req;
   }
 
   async update(id: string, agencyId: string, data: any) {
@@ -145,7 +171,7 @@ export class MaintenanceService {
     });
     if (!req) throw new NotFoundException('Maintenance request not found.');
 
-    return this.prisma.maintenanceRequest.update({
+    const updated = await this.prisma.maintenanceRequest.update({
       where: { id },
       data: {
         status: data.status,
@@ -156,6 +182,10 @@ export class MaintenanceService {
       },
       include: { vendor: true, unit: true },
     });
+    await this.redis.del(`agency:${agencyId}:summary:maintenance`);
+    await this.redis.del(`agency:${agencyId}:kpis`);
+    await this.redis.del(`agency:${agencyId}:reports:maintenance`);
+    return updated;
   }
 }
 
@@ -163,6 +193,12 @@ export class MaintenanceService {
 @Controller('maintenance')
 export class MaintenanceController {
   constructor(private service: MaintenanceService) {}
+
+  @Get('summary')
+  @RequirePermission('maintenance:view')
+  async getSummary(@CurrentUser() user: any) {
+    return this.service.getSummary(user.agencyId);
+  }
 
   @Get()
   @RequirePermission('maintenance:view')

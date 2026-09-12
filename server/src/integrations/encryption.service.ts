@@ -44,7 +44,7 @@ export class EncryptionService {
       let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
       return decrypted;
-    } catch (e) {
+    } catch (_e) {
       console.error('Decryption failed, returning raw string in case it was unencrypted.');
       return encryptedText;
     }

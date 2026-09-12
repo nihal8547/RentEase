@@ -5,7 +5,6 @@ import {
   Get,
   Post,
   Body,
-  Param,
   Query,
   UseGuards,
   NotFoundException,

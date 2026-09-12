@@ -13,8 +13,6 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -109,11 +107,40 @@ export class DocumentsService {
     if (file && file.size > 10 * 1024 * 1024) {
       throw new BadRequestException('File size exceeds maximum limit of 10MB');
     }
-    // Generate simulated URL or use stored file
-    const fileUrl = file
-      ? `/uploads/${Date.now()}_${file.originalname}`
-      : `/uploads/documents/${Date.now()}_document.pdf`;
+    let fileUrl = '';
     const fileName = metadata.fileName || file?.originalname || 'Qatar_Corporate_Document.pdf';
+
+    if (file && process.env.AWS_S3_BUCKET) {
+      const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+      const s3 = new S3Client({
+        region: process.env.AWS_S3_REGION || 'me-central-1',
+        credentials: {
+          accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+          secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+        },
+        endpoint: process.env.AWS_S3_ENDPOINT,
+      });
+
+      const key = `uploads/${agencyId}/${Date.now()}_${file.originalname}`;
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.AWS_S3_BUCKET,
+          Key: key,
+          Body: file.buffer,
+          ContentType: file.mimetype,
+        })
+      );
+      // Generate a public URL assuming the bucket is public or behind CDN
+      // For private buckets, presigned URLs would be generated on fetch
+      fileUrl = process.env.AWS_S3_ENDPOINT 
+        ? `${process.env.AWS_S3_ENDPOINT}/${process.env.AWS_S3_BUCKET}/${key}`
+        : `https://${process.env.AWS_S3_BUCKET}.s3.${process.env.AWS_S3_REGION}.amazonaws.com/${key}`;
+    } else {
+      // Fallback for local development
+      fileUrl = file
+        ? `/uploads/${Date.now()}_${file.originalname}`
+        : `/uploads/documents/${Date.now()}_document.pdf`;
+    }
 
     return this.prisma.document.create({
       data: {

@@ -14,11 +14,11 @@ export const LoginView: React.FC = () => {
   const { setAuth } = useAuthStore();
 
   const [viewMode, setViewMode] = useState<'login' | 'register' | 'forgot_password'>('login');
-  const [email, setEmail] = useState('t.almansoor@alrayyan.qa');
-  const [password, setPassword] = useState('password123');
-  const [agencyName, setAgencyName] = useState('Al Rayyan Real Estate W.L.L.');
-  const [crNumber, setCrNumber] = useState('104829/QA');
-  const [name, setName] = useState('Tariq Al-Mansoor');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [agencyName, setAgencyName] = useState('');
+  const [crNumber, setCrNumber] = useState('');
+  const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -49,67 +49,15 @@ export const LoginView: React.FC = () => {
       }
       navigate(from, { replace: true });
     } catch (err: any) {
-      // If server is offline during initial frontend preview, log in with mock session
-      const mockAgency = {
-        id: 'agency-1',
-        name: agencyName || 'Al Rayyan Real Estate W.L.L.',
-        crNumber: crNumber || '104829/QA',
-        phone: '+974 4499 1200',
-        email: 'contact@alrayyan.qa',
-      };
-      const mockUser = {
-        id: 'usr-1',
-        email,
-        name: name || 'Tariq Al-Mansoor',
-        role: 'OWNER' as const,
-        agencyId: 'agency-1',
-      };
-      setAuth('mock-jwt-token-qatar', mockUser, mockAgency);
-      navigate(from, { replace: true });
+      const message =
+        err?.response?.data?.message ||
+        (err?.code === 'ERR_NETWORK'
+          ? 'Unable to reach server. Please check your connection.'
+          : 'Invalid credentials. Please try again.');
+      setError(Array.isArray(message) ? message[0] : message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleQuickDemo = (role: 'OWNER' | 'ADMIN' | 'AGENT') => {
-    const rolesConfig = {
-      OWNER: {
-        name: 'Tariq Al-Mansoor',
-        email: 't.almansoor@alrayyan.qa',
-        role: 'OWNER' as const,
-      },
-      ADMIN: {
-        name: 'Sarah Al-Attiyah',
-        email: 's.attiyah@alrayyan.qa',
-        role: 'ADMIN' as const,
-      },
-      AGENT: {
-        name: 'Kareem Mostafa',
-        email: 'k.mostafa@alrayyan.qa',
-        role: 'AGENT' as const,
-      },
-    }[role];
-
-    const mockAgency = {
-      id: 'agency-1',
-      name: 'Al Rayyan Real Estate W.L.L.',
-      crNumber: '104829/QA',
-      phone: '+974 4499 1200',
-      email: 'contact@alrayyan.qa',
-    };
-
-    setAuth(
-      'mock-jwt-token-qatar',
-      {
-        id: `usr-${role.toLowerCase()}`,
-        email: rolesConfig.email,
-        name: rolesConfig.name,
-        role: rolesConfig.role,
-        agencyId: 'agency-1',
-      },
-      mockAgency
-    );
-    navigate(from, { replace: true });
   };
 
   return (
@@ -122,7 +70,7 @@ export const LoginView: React.FC = () => {
           </div>
           <h1 className="font-serif text-2xl font-bold tracking-tight">RentEase</h1>
           <p className="text-xs text-white/70 mt-1">
-            Qatar Property & Tenant Management SaaS
+            Qatar Property &amp; Tenant Management SaaS
           </p>
         </div>
 
@@ -225,6 +173,8 @@ export const LoginView: React.FC = () => {
             <input
               type="email"
               required
+              autoComplete="email"
+              placeholder="your@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-3 py-2 border border-line rounded focus:outline-none focus:border-maroon-700"
@@ -239,7 +189,7 @@ export const LoginView: React.FC = () => {
                 </label>
                 {viewMode === 'login' && (
                   <Button
-                    variant="ghost" 
+                    variant="ghost"
                     type="button"
                     onClick={() => setViewMode('forgot_password')}
                     className="text-maroon-700 hover:underline font-medium text-[11px] px-2 py-1 h-auto min-w-0"
@@ -251,8 +201,10 @@ export const LoginView: React.FC = () => {
               </div>
               <div className="relative">
                 <input
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete={viewMode === 'login' ? 'current-password' : 'new-password'}
+                  placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full pl-3 pr-10 py-2 border border-line rounded focus:outline-none focus:border-maroon-700 font-mono"
@@ -276,10 +228,16 @@ export const LoginView: React.FC = () => {
             isLoading={loading}
             className="w-full py-2.5 flex items-center justify-center gap-1.5"
           >
-            <span>{viewMode === 'register' ? 'Register Agency' : viewMode === 'forgot_password' ? 'Send Reset Link' : 'Access Portal'}</span>
+            <span>
+              {viewMode === 'register'
+                ? 'Register Agency'
+                : viewMode === 'forgot_password'
+                ? 'Send Reset Link'
+                : 'Access Portal'}
+            </span>
             <ArrowRight size={14} />
           </Button>
-          
+
           {viewMode === 'forgot_password' && (
             <Button
               variant="secondary"
@@ -291,39 +249,6 @@ export const LoginView: React.FC = () => {
             </Button>
           )}
         </form>
-
-        {/* Quick Demo Access Bar */}
-        <div className="p-4 bg-sand-050 border-t border-line text-xs">
-          <p className="text-[11px] font-semibold text-ink-600 uppercase tracking-wider text-center mb-2">
-            Instant Demo Access (One-Click)
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => handleQuickDemo('OWNER')}
-              className="px-2 py-1.5 text-[11px] truncate h-auto"
-            >
-              Owner
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => handleQuickDemo('ADMIN')}
-              className="px-2 py-1.5 text-[11px] truncate h-auto"
-            >
-              Admin
-            </Button>
-            <Button
-              variant="secondary"
-              type="button"
-              onClick={() => handleQuickDemo('AGENT')}
-              className="px-2 py-1.5 text-[11px] truncate h-auto"
-            >
-              Agent
-            </Button>
-          </div>
-        </div>
       </div>
     </div>
   );

@@ -117,4 +117,12 @@ export class BillingService {
       orderBy: { createdAt: 'desc' },
     });
   }
+
+  async assertUnitQuota(agencyId: string) {
+    const { unitLimit, unitUsage } = await this.getCurrentPlan(agencyId);
+    // If unitLimit is null or 0, assume unlimited for this plan (or adapt based on logic)
+    if (unitLimit && unitUsage >= unitLimit) {
+      throw new BadRequestException('Subscription plan unit limit reached. Please upgrade to add more units.');
+    }
+  }
 }

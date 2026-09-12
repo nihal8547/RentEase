@@ -25,131 +25,46 @@ import StatusPill from '../components/ui/StatusPill';
 export const DashboardView: React.FC = () => {
   const { t } = useTranslation();
 
-  // Query KPIs
-  const { data: kpis } = useQuery({
+  // Query KPIs — no mock fallback; show real error state on failure
+  const { data: kpis, isError: kpisError, isLoading: kpisLoading, refetch: refetchKpis } = useQuery({
     queryKey: ['dashboard-kpis'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/kpis');
-        return res.data;
-      } catch {
-        // High fidelity fallback for Qatar real estate portfolio
-        return {
-          occupancyRate: 94.2,
-          totalUnits: 72,
-          occupiedUnits: 68,
-          monthlyRevenueQar: 584500,
-          pendingMaintenanceCount: 4,
-          renewalsDueCount: 5,
-        };
-      }
+      const res = await api.get('/dashboard/kpis');
+      return res.data;
     },
+    retry: 2,
   });
 
   // Query Revenue Chart
-  const { data: chartData } = useQuery({
+  const { data: chartData, isError: _chartError, isLoading: _chartLoading } = useQuery({
     queryKey: ['dashboard-chart'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/dashboard/revenue-chart');
-        return res.data;
-      } catch {
-        return [
-          { month: 'Oct', collectedQar: 520000, projectedQar: 550000 },
-          { month: 'Nov', collectedQar: 535000, projectedQar: 555000 },
-          { month: 'Dec', collectedQar: 560000, projectedQar: 570000 },
-          { month: 'Jan', collectedQar: 575000, projectedQar: 580000 },
-          { month: 'Feb', collectedQar: 580000, projectedQar: 585000 },
-          { month: 'Mar', collectedQar: 584500, projectedQar: 590000 },
-        ];
-      }
+      const res = await api.get('/dashboard/revenue-chart');
+      return res.data;
     },
+    retry: 2,
   });
 
   // Query Upcoming Expiring Leases
-  const { data: upcomingRenewals } = useQuery({
+  const { data: upcomingRenewals, isLoading: _renewalsLoading } = useQuery({
     queryKey: ['upcoming-renewals'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/leases?status=EXPIRING&expiringInDays=30&limit=5');
-        const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-        if (items.length > 0) return items;
-      } catch {
-        // fallback
-      }
-      return [
-        {
-          id: 'l-1',
-          unitNumber: 'Tower 12 - Apt 1402',
-          property: 'The Pearl - Porto Arabia',
-          tenantName: 'Nasser Al-Kuwari',
-          phone: '+974 5521 8899',
-          endDate: '2026-09-28',
-          rentQar: 14500,
-        },
-        {
-          id: 'l-2',
-          unitNumber: 'Marina Heights - Apt 804',
-          property: 'Lusail Marina',
-          tenantName: 'David Sterling',
-          phone: '+974 6692 3411',
-          endDate: '2026-10-04',
-          rentQar: 11000,
-        },
-        {
-          id: 'l-3',
-          unitNumber: 'Villa 09',
-          property: 'West Bay Diplomatic Compound',
-          tenantName: 'Fatima Al-Sulaiti',
-          phone: '+974 5543 9087',
-          endDate: '2026-10-12',
-          rentQar: 22000,
-        },
-      ];
+      const res = await api.get('/leases?status=EXPIRING&expiringInDays=30&limit=5');
+      const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      return items;
     },
+    retry: 2,
   });
 
   // Query Recent Maintenance
-  const { data: recentMaintenance } = useQuery({
+  const { data: recentMaintenance, isLoading: _maintenanceLoading } = useQuery({
     queryKey: ['recent-maintenance'],
     queryFn: async () => {
-      try {
-        const res = await api.get('/maintenance?limit=5');
-        const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
-        if (items.length > 0) return items;
-      } catch {
-        // fallback
-      }
-      return [
-        {
-          id: 'm-1',
-          title: 'Master Bedroom AC Compressor Malfunction',
-          unit: 'Tower 12 - Apt 1402',
-          priority: 'URGENT',
-          status: 'IN_PROGRESS',
-          reportedDate: '2 hours ago',
-          vendor: 'Doha Climatech W.L.L.',
-        },
-        {
-          id: 'm-2',
-          title: 'Kitchen Sink Drain Blockage',
-          unit: 'Marina Heights - Apt 302',
-          priority: 'MEDIUM',
-          status: 'OPEN',
-          reportedDate: 'Yesterday',
-          vendor: 'Unassigned',
-        },
-        {
-          id: 'm-3',
-          title: 'Balcony Glass Sealant Degradation',
-          unit: 'Tower 12 - Apt 1901',
-          priority: 'LOW',
-          status: 'COMPLETED',
-          reportedDate: '3 days ago',
-          vendor: 'Al-Mana Glazing',
-        },
-      ];
+      const res = await api.get('/maintenance?limit=5');
+      const items = Array.isArray(res.data) ? res.data : (res.data?.data || []);
+      return items;
     },
+    retry: 2,
   });
 
   const handleSendWhatsApp = (tenantName: string, phone: string, unit: string) => {
@@ -170,11 +85,17 @@ export const DashboardView: React.FC = () => {
       </div>
 
       {/* KPI Cards Row */}
+      {kpisError && (
+        <div className="p-3 rounded bg-ruby-100 border border-ruby-600/30 text-ruby-700 text-xs flex items-center justify-between">
+          <span>Unable to load KPI data. Dashboard figures are unavailable.</span>
+          <button onClick={() => refetchKpis()} className="underline font-semibold ml-4">Retry</button>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard
           title={t('dashboard.kpiOccupancy')}
-          value={`${kpis?.occupancyRate || 94.2}%`}
-          subtitle={`${kpis?.occupiedUnits || 68} of ${kpis?.totalUnits || 72} units active`}
+          value={kpisLoading ? '—' : kpisError ? 'N/A' : `${kpis?.occupancyRate ?? '—'}%`}
+          subtitle={kpisLoading || kpisError ? '' : `${kpis?.occupiedUnits} of ${kpis?.totalUnits} units active`}
           trend="+2.1% YoY"
           trendPositive={true}
           edgeColor="gold"
