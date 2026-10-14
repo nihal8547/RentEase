@@ -7,24 +7,24 @@
 ───────────────────────────────────────────── */
 :root {
   /* Brand */
-  --color-maroon-900: #3D0B1C;
-  --color-maroon-800: #4A0F22;
-  --color-maroon-700: #6E1731;
-  --color-maroon-600: #7F1B39;
-  --color-gold-500:   #B9924A;
-  --color-gold-400:   #C9A55A;
-  --color-gold-300:   #D9BE8C;
-  --color-sand-200:   #EDE6D5;
-  --color-sand-100:   #F4EFE4;
-  --color-sand-050:   #FBF9F3;
+  --color-maroon-900: #0D1B2A;
+  --color-maroon-800: #12243A;
+  --color-maroon-700: #1B4F72;
+  --color-maroon-600: #1F6090;
+  --color-gold-500:   #00B4D8;
+  --color-gold-400:   #48CAE4;
+  --color-gold-300:   #90E0EF;
+  --color-sand-200:   #D6E4EC;
+  --color-sand-100:   #EBF4F8;
+  --color-sand-050:   #F5FAFB;
 
   /* Ink / Neutral */
-  --color-ink-900: #1A1614;
-  --color-ink-800: #221E1C;
-  --color-ink-600: #5B534C;
-  --color-ink-400: #8B8279;
-  --color-ink-200: #B8B0A9;
-  --color-line:    #E4DCCB;
+  --color-ink-900: #0D1B2A;
+  --color-ink-800: #1A2D3E;
+  --color-ink-600: #4A6278;
+  --color-ink-400: #7A96A8;
+  --color-ink-200: #B0C4CF;
+  --color-line:    #CCE0EA;
 
   /* Semantic */
   --color-emerald-700: #2D6B4A;

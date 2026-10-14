@@ -309,25 +309,25 @@ export const DashboardView: React.FC = () => {
                 <AreaChart data={chartData} margin={{ top: 8, right: 4, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="gradCollected" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#6E1731" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#6E1731" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="#1B4F72" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#1B4F72" stopOpacity={0} />
                     </linearGradient>
                     <linearGradient id="gradProjected" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#B9924A" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="#B9924A" stopOpacity={0} />
+                      <stop offset="5%"  stopColor="#00B4D8" stopOpacity={0.25} />
+                      <stop offset="95%" stopColor="#00B4D8" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#E4DCCB" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#CCE0EA" vertical={false} />
                   <XAxis
                     dataKey="month"
-                    stroke="#B8B0A9"
+                    stroke="#B0C4CF"
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
                     dy={6}
                   />
                   <YAxis
-                    stroke="#B8B0A9"
+                    stroke="#B0C4CF"
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
@@ -337,38 +337,38 @@ export const DashboardView: React.FC = () => {
                   <Tooltip
                     contentStyle={{
                       backgroundColor: '#fff',
-                      border: '1px solid #E4DCCB',
+                      border: '1px solid #CCE0EA',
                       borderRadius: '10px',
                       boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
                       fontSize: '12px',
                       padding: '10px 14px',
                     }}
-                    labelStyle={{ fontWeight: 600, color: '#1A1614', marginBottom: 4 }}
+                    labelStyle={{ fontWeight: 600, color: '#0D1B2A', marginBottom: 4 }}
                     formatter={(val: any) => [`${Number(val).toLocaleString()} QAR`] as [string]}
-                    cursor={{ stroke: '#E4DCCB', strokeWidth: 1 }}
+                    cursor={{ stroke: '#CCE0EA', strokeWidth: 1 }}
                   />
                   <Area
                     type="monotone"
                     dataKey="collectedQar"
                     name="collectedQar"
-                    stroke="#6E1731"
+                    stroke="#1B4F72"
                     strokeWidth={2}
                     fillOpacity={1}
                     fill="url(#gradCollected)"
                     dot={false}
-                    activeDot={{ r: 4, fill: '#6E1731', strokeWidth: 0 }}
+                    activeDot={{ r: 4, fill: '#1B4F72', strokeWidth: 0 }}
                   />
                   <Area
                     type="monotone"
                     dataKey="projectedQar"
                     name="projectedQar"
-                    stroke="#B9924A"
+                    stroke="#00B4D8"
                     strokeWidth={2}
                     strokeDasharray="5 4"
                     fillOpacity={1}
                     fill="url(#gradProjected)"
                     dot={false}
-                    activeDot={{ r: 4, fill: '#B9924A', strokeWidth: 0 }}
+                    activeDot={{ r: 4, fill: '#00B4D8', strokeWidth: 0 }}
                   />
                 </AreaChart>
               </ResponsiveContainer>

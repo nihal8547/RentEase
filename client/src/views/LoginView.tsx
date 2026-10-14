@@ -153,7 +153,7 @@ export const LoginView: React.FC = () => {
         <GridPattern />
 
         {/* Gold top accent line */}
-        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-gold-500 via-gold-300 to-gold-500" />
+        <div className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-gold-500 via-gold-300 to-gold-500" style={{ background: 'linear-gradient(to right, #00B4D8, #90E0EF, #00B4D8)' }} />
 
         {/* Decorative circle glow */}
         <div className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full bg-maroon-700/40 blur-3xl pointer-events-none" />
