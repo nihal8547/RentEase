@@ -37,10 +37,10 @@ export const LoginView: React.FC = () => {
           email,
           password,
         });
-        setAuth(res.data.token, res.data.user, res.data.agency);
+        setAuth(res.data.accessToken || res.data.token, { ...res.data.user, role: res.data.role }, res.data.agency);
       } else if (viewMode === 'login') {
         const res = await api.post('/auth/login', { email, password });
-        setAuth(res.data.token, res.data.user, res.data.agency);
+        setAuth(res.data.accessToken || res.data.token, { ...res.data.user, role: res.data.role }, res.data.agency);
       } else if (viewMode === 'forgot_password') {
         const res = await api.post('/auth/forgot-password', { email });
         toast.success(res.data.message || `Password reset instructions sent to ${email}`);

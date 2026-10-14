@@ -396,38 +396,42 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* Tabs Navigation Bar */}
-      <div className="flex border-b border-line overflow-x-auto space-x-1 sm:space-x-2 text-xs font-medium pb-px">
-        {[
-          { id: 'profile', label: 'Agency Profile', icon: Building2 },
-          { id: 'team', label: 'Team Members', icon: Users },
-          { id: 'roles', label: 'Roles & RBAC', icon: Shield },
-          { id: 'custom-lists', label: 'Custom Lists', icon: ListFilter },
-          { id: 'integrations', label: 'Gateways & Integrations', icon: Webhook },
-          { id: 'notifications', label: 'Alert Preferences', icon: Bell },
-          { id: 'billing', label: 'Billing & Quota', icon: CreditCard },
-          { id: 'audit-log', label: 'Audit Trail', icon: History },
-          { id: 'export', label: 'Data Export', icon: Download },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id as SettingsTab)}
-              className={`flex items-center gap-2 py-3 px-3.5 border-b-2 font-medium whitespace-nowrap transition-colors duration-150 ${
-                isActive
-                  ? 'border-maroon-700 text-maroon-800 font-semibold bg-white rounded-t-md shadow-xs'
-                  : 'border-transparent text-ink-500 hover:text-ink-800 hover:border-sand-300'
-              }`}
-            >
-              <Icon size={15} className={isActive ? 'text-maroon-700' : 'text-ink-400'} />
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Settings Layout Area */}
+      <div className="flex flex-col md:flex-row gap-6 lg:gap-8 items-start">
+        {/* Settings Sidebar */}
+        <div className="w-full md:w-64 shrink-0 flex flex-col space-y-1">
+          {[
+            { id: 'profile', label: 'Agency Profile', icon: Building2 },
+            { id: 'team', label: 'Team Members', icon: Users },
+            { id: 'roles', label: 'Roles & RBAC', icon: Shield },
+            { id: 'custom-lists', label: 'Custom Lists', icon: ListFilter },
+            { id: 'integrations', label: 'Gateways & Integrations', icon: Webhook },
+            { id: 'notifications', label: 'Alert Preferences', icon: Bell },
+            { id: 'billing', label: 'Billing & Quota', icon: CreditCard },
+            { id: 'audit-log', label: 'Audit Trail', icon: History },
+            { id: 'export', label: 'Data Export', icon: Download },
+          ].map((tab) => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => handleTabChange(tab.id as SettingsTab)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-xs font-medium transition-colors duration-150 text-left ${
+                  isActive
+                    ? 'bg-maroon-700 text-white shadow-sm'
+                    : 'text-ink-600 hover:bg-sand-100 hover:text-ink-900'
+                }`}
+              >
+                <Icon size={16} className={isActive ? 'text-gold-300' : 'text-ink-400'} />
+                <span>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
 
+        {/* Settings Content Area */}
+        <div className="flex-1 min-w-0 w-full space-y-6">
       {/* ============================================================
           TAB 1: AGENCY PROFILE
       ============================================================ */}
@@ -1672,6 +1676,8 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       <ConfirmModal
         isOpen={!!memberToDelete}
