@@ -74,17 +74,17 @@ export function DataTable<T extends Record<string, any>>({
     <div className="flex flex-col gap-3 w-full">
       {/* Top Filter and Search Bar */}
       {(onSearchChange || filters || headerActions) && (
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-lg border border-line shadow-xs">
-          <div className="flex flex-1 items-center gap-3 min-w-[280px]">
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-3 rounded-xl border border-line shadow-xs">
+          <div className="flex flex-1 items-center gap-2.5 min-w-[240px]">
             {onSearchChange && (
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-400 rtl:left-auto rtl:right-3 pointer-events-none" />
+              <div className="relative flex-1 max-w-sm">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-400 rtl:left-auto rtl:right-2.5 pointer-events-none" />
                 <input
                   type="text"
                   value={search}
                   onChange={(e) => onSearchChange(e.target.value)}
                   placeholder={searchPlaceholder}
-                  className="w-full pl-9 pr-3 py-1.5 text-xs bg-sand-050 border border-line rounded focus:outline-none focus:border-maroon-700 rtl:pl-3 rtl:pr-9 transition-colors placeholder:text-ink-400 font-sans"
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-sand-050 border border-line rounded-lg focus:outline-none focus:border-maroon-700 focus:bg-white rtl:pl-3 rtl:pr-8 transition-all placeholder:text-ink-400"
                 />
               </div>
             )}
@@ -96,7 +96,7 @@ export function DataTable<T extends Record<string, any>>({
       )}
 
       {/* Main Table Container */}
-      <div className="bg-white rounded-xl border border-line overflow-hidden shadow-xs relative">
+      <div className="bg-white rounded-xl border border-line overflow-hidden shadow-sm relative">
         {isLoading && data.length > 0 && (
           <div className="absolute inset-0 bg-white/70 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center">
             <div className="flex items-center gap-2 text-xs font-semibold text-maroon-800 bg-white px-4 py-2 rounded-full shadow-md border border-line">
@@ -108,7 +108,7 @@ export function DataTable<T extends Record<string, any>>({
 
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="border-b border-line bg-sand-050 text-ink-600 font-semibold uppercase tracking-wider text-[11px]">
+            <tr className="border-b border-line bg-sand-050/80 text-ink-400 font-bold uppercase tracking-widest text-2xs">
               {columns.map((col, idx) => {
                 const colKey = col.key || `col-${idx}`;
                 const isSorted = col.key && sortField === col.key;
@@ -205,7 +205,7 @@ export function DataTable<T extends Record<string, any>>({
         </table>
 
         {/* Pagination Footer */}
-        <div className="px-4 py-3 border-t border-line bg-sand-050 flex flex-wrap items-center justify-between gap-3 text-xs text-ink-600 select-none">
+        <div className="px-4 py-3 border-t border-line bg-white flex flex-wrap items-center justify-between gap-3 text-xs text-ink-600 select-none">
           <div className="flex items-center gap-3">
             <span>
               Showing <strong className="text-ink-900 font-semibold">{startRecord}</strong> to{' '}
@@ -219,7 +219,7 @@ export function DataTable<T extends Record<string, any>>({
                 <select
                   value={limit}
                   onChange={(e) => onLimitChange(Number(e.target.value))}
-                  className="bg-white border border-line rounded px-2 py-1 text-xs text-ink-800 font-medium focus:outline-none focus:border-maroon-700"
+                  className="bg-white border border-line rounded-md px-2 py-1 text-xs text-ink-800 font-medium focus:outline-none focus:border-maroon-700 focus:ring-2 focus:ring-maroon-700/10"
                 >
                   <option value={10}>10</option>
                   <option value={25}>25</option>
@@ -235,24 +235,24 @@ export function DataTable<T extends Record<string, any>>({
               type="button"
               disabled={page <= 1 || isLoading}
               onClick={() => onPageChange(page - 1)}
-              className="p-1.5 rounded border border-line bg-white hover:bg-sand-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white hover:bg-sand-100 disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-xs"
               aria-label="Previous page"
             >
-              <ChevronLeft className="w-4 h-4 text-ink-700" />
+              <ChevronLeft className="w-3.5 h-3.5 text-ink-600" />
             </button>
 
-            <span className="px-3 py-1 font-medium text-ink-800">
-              Page {page} of {computedTotalPages}
+            <span className="px-2 text-xs font-medium text-ink-600 tabular-nums">
+              {page} / {computedTotalPages}
             </span>
 
             <button
               type="button"
               disabled={page >= computedTotalPages || isLoading}
               onClick={() => onPageChange(page + 1)}
-              className="p-1.5 rounded border border-line bg-white hover:bg-sand-100 disabled:opacity-40 disabled:pointer-events-none transition-colors"
+              className="w-8 h-8 flex items-center justify-center rounded-lg border border-line bg-white hover:bg-sand-100 disabled:opacity-40 disabled:pointer-events-none transition-colors shadow-xs"
               aria-label="Next page"
             >
-              <ChevronRight className="w-4 h-4 text-ink-700" />
+              <ChevronRight className="w-3.5 h-3.5 text-ink-600" />
             </button>
           </div>
         </div>

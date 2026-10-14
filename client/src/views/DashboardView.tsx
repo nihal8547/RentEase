@@ -77,18 +77,18 @@ export const DashboardView: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h2 className="font-serif text-2xl font-bold text-ink-900 tracking-tight">
+      <div className="animate-fade-in">
+        <h2 className="text-2xl font-bold text-ink-900 tracking-tight leading-tight">
           {t('dashboard.title')}
         </h2>
-        <p className="text-xs text-ink-600 mt-1">{t('dashboard.subtitle')}</p>
+        <p className="text-xs text-ink-400 mt-1">{t('dashboard.subtitle')}</p>
       </div>
 
       {/* KPI Cards Row */}
       {kpisError && (
-        <div className="p-3 rounded bg-ruby-100 border border-ruby-600/30 text-ruby-700 text-xs flex items-center justify-between">
+        <div className="px-4 py-3 rounded-xl bg-ruby-100 border border-ruby-600/20 text-ruby-700 text-xs flex items-center justify-between">
           <span>Unable to load KPI data. Dashboard figures are unavailable.</span>
-          <button onClick={() => refetchKpis()} className="underline font-semibold ml-4">Retry</button>
+          <button onClick={() => refetchKpis()} className="underline font-semibold ml-4 hover:text-ruby-600">Retry</button>
         </div>
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -213,7 +213,7 @@ export const DashboardView: React.FC = () => {
         >
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs rtl:text-right">
-              <thead className="bg-sand-100/60 text-ink-600 font-semibold border-b border-line uppercase tracking-wider">
+              <thead className="bg-sand-050/80 text-ink-400 font-bold border-b border-line uppercase tracking-widest text-2xs">
                 <tr>
                   <th className="px-4 py-3">{t('dashboard.tenant')}</th>
                   <th className="px-4 py-3">{t('dashboard.unit')}</th>
@@ -243,7 +243,7 @@ export const DashboardView: React.FC = () => {
                         onClick={() =>
                           handleSendWhatsApp(item.tenantName, item.phone, item.unitNumber)
                         }
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-600 rounded font-semibold text-[11px] transition-colors border border-emerald-600/30"
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-100 hover:bg-emerald-600/20 text-emerald-700 rounded-lg font-semibold text-2xs transition-colors border border-emerald-600/20"
                       >
                         <MessageSquare size={12} />
                         <span>WhatsApp</span>

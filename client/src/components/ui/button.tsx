@@ -4,23 +4,28 @@ import { cn } from "cn"
 import { Loader2 } from "lucide-react"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap transition-colors outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-500 relative min-w-[44px] min-h-[36px]",
+  "inline-flex items-center justify-center whitespace-nowrap font-semibold transition-all duration-150 outline-none focus-visible:ring-2 focus-visible:ring-maroon-700 focus-visible:ring-offset-1 relative select-none",
   {
     variants: {
       variant: {
         primary:
-          "bg-maroon-700 text-white hover:bg-maroon-600 font-semibold px-[18px] py-[10px] rounded-[3px] disabled:bg-ink-400 disabled:text-white disabled:cursor-not-allowed disabled:hover:bg-ink-400",
+          "bg-maroon-700 text-white hover:bg-maroon-600 active:bg-maroon-800 shadow-sm hover:shadow-md disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none",
         secondary:
-          "bg-white border border-line text-ink-900 hover:bg-sand-050 font-semibold px-[18px] py-[10px] rounded-[3px] disabled:opacity-50 disabled:cursor-not-allowed",
+          "bg-white border border-line text-ink-800 hover:bg-sand-100 hover:border-ink-200 active:bg-sand-200 shadow-xs disabled:opacity-50 disabled:cursor-not-allowed",
         ghost:
-          "bg-transparent text-maroon-700 hover:bg-sand-100 font-semibold px-[18px] py-[10px] rounded-[3px] disabled:opacity-50 disabled:cursor-not-allowed",
+          "bg-transparent text-maroon-700 hover:bg-sand-100 active:bg-sand-200 disabled:opacity-50 disabled:cursor-not-allowed",
         destructive:
-          "bg-red-600 text-white hover:bg-red-700 font-semibold px-[18px] py-[10px] rounded-[3px] disabled:opacity-50 disabled:cursor-not-allowed",
+          "bg-ruby-600 text-white hover:bg-ruby-700 active:bg-ruby-700 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed",
+        outline:
+          "bg-transparent border border-maroon-700 text-maroon-700 hover:bg-maroon-700 hover:text-white active:bg-maroon-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed",
         icon:
-          "bg-white border border-line text-ink-900 hover:bg-sand-050 rounded-[3px] w-[36px] h-[36px] flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed !min-w-0 p-0",
+          "bg-white border border-line text-ink-600 hover:bg-sand-100 hover:text-ink-900 active:bg-sand-200 shadow-xs rounded-md disabled:opacity-50 disabled:cursor-not-allowed !min-w-0 p-0",
       },
       size: {
-        default: "",
+        sm:      "text-xs px-3 py-1.5 rounded-md min-h-[30px] min-w-[30px]",
+        default: "text-sm px-4 py-2 rounded-md min-h-[36px] min-w-[36px]",
+        lg:      "text-base px-5 py-2.5 rounded-lg min-h-[42px] min-w-[42px]",
+        icon:    "w-[34px] h-[34px] rounded-md",
       },
     },
     defaultVariants: {
@@ -38,25 +43,24 @@ export interface ButtonProps
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, isLoading, children, disabled, ...props }, ref) => {
-    
-    // Accessibility: Automatically map title to aria-label for icon buttons if missing
-    const isIcon = variant === 'icon';
-    const computedAriaLabel = props['aria-label'] || (isIcon ? props.title : undefined);
+    const isIconVariant = variant === 'icon';
+    const computedAriaLabel = props['aria-label'] || (isIconVariant ? props.title : undefined);
+    const resolvedSize = (isIconVariant && !size) ? 'icon' : (size ?? 'default');
 
     return (
       <button
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(buttonVariants({ variant, size: resolvedSize, className }))}
         ref={ref}
         disabled={isLoading || disabled}
         aria-label={computedAriaLabel}
         {...props}
       >
-        <span className={cn("inline-flex items-center justify-center gap-2", isLoading && "opacity-0")}>
+        <span className={cn("inline-flex items-center justify-center gap-1.5", isLoading && "opacity-0")}>
           {children}
         </span>
         {isLoading && (
-          <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-            <Loader2 className="w-4 h-4 animate-spin text-current" />
+          <span className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-current" />
           </span>
         )}
       </button>
