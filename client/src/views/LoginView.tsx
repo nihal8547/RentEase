@@ -113,12 +113,18 @@ export const LoginView: React.FC = () => {
     setLoading(true);
     try {
       if (viewMode === 'register') {
-        const res = await api.post('/auth/register', { agencyName, crNumber, name, email, password });
-        setAuth(res.data.token, res.data.user, res.data.agency);
+        const res = await api.post('/auth/register', {
+          agencyName,
+          crNumber,
+          name,
+          email,
+          password,
+        });
+        setAuth(res.data.accessToken || res.data.token, { ...res.data.user, role: res.data.role }, res.data.agency);
       } else if (viewMode === 'login') {
         const res = await api.post('/auth/login', { email, password });
-        setAuth(res.data.token, res.data.user, res.data.agency);
-      } else {
+        setAuth(res.data.accessToken || res.data.token, { ...res.data.user, role: res.data.role }, res.data.agency);
+      } else if (viewMode === 'forgot_password') {
         const res = await api.post('/auth/forgot-password', { email });
         toast.success(res.data.message || `Reset link sent to ${email}`);
         switchMode('login');

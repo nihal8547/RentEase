@@ -104,6 +104,17 @@ export class DocumentsService {
       fileName?: string;
     },
   ) {
+    const allowedMimeTypes = [
+      'application/pdf',
+      'image/jpeg',
+      'image/png',
+      'image/webp',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    if (file && !allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Invalid file type. Only PDF, JPG, PNG, WEBP, and DOCX are allowed.');
+    }
     if (file && file.size > 10 * 1024 * 1024) {
       throw new BadRequestException('File size exceeds maximum limit of 10MB');
     }

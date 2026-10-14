@@ -18,7 +18,6 @@ services:
     networks:
       - rentease-prod-network
 
-  # Fix 7: Redis for BullMQ job queues
   redis:
     image: redis:7-alpine
     container_name: rentease-redis-prod
@@ -34,24 +33,6 @@ services:
     networks:
       - rentease-prod-network
 
-  # Fix 12: One-off migration job runs before server starts (prevents race condition)
-  migrate:
-    build:
-      context: ./server
-      dockerfile: Dockerfile
-    container_name: rentease-migrate-prod
-    restart: "no"
-    command: npx prisma migrate deploy
-    depends_on:
-      postgres:
-        condition: service_healthy
-    env_file: .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL}
-      NODE_ENV: production
-    networks:
-      - rentease-prod-network
-
   server:
     build:
       context: ./server
@@ -63,15 +44,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:3021:3000"
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
       PORT: 3000
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-https://app.rentease.qa}
+      ALLOWED_ORIGIN: ${ALLOWED_ORIGIN:-https://rentease.webbea.qa}
       NODE_ENV: production
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -83,18 +64,16 @@ services:
     networks:
       - rentease-prod-network
 
-  # Fix 11: Nginx reverse proxy — handles HTTPS termination, SPA routing, API proxying
-  nginx:
-    image: nginx:alpine
-    container_name: rentease-nginx-prod
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile.prod
+      args:
+        VITE_API_URL: /api
+    container_name: rentease-client-prod
     restart: always
     ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro    # Mount your SSL certificate files here
-      - rentease_prod_static:/usr/share/nginx/html:ro
+      - "127.0.0.1:3020:80"
     depends_on:
       - server
     networks:
@@ -103,7 +82,6 @@ services:
 volumes:
   rentease_prod_postgres_data:
   rentease_prod_redis_data:
-  rentease_prod_static:
 
 networks:
   rentease-prod-network:

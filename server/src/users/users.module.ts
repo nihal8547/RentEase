@@ -26,15 +26,22 @@ export class UsersService {
     private jwtService: JwtService,
   ) {}
 
+  private sanitizeUser(user: any) {
+    if (!user) return user;
+    const { passwordHash, resetToken, resetTokenExpiry, ...safeUser } = user;
+    return safeUser;
+  }
+
   // List all team members for the agency
   async getAgencyUsers(agencyId: string) {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where: { agencyId },
       include: {
         role: true,
       },
       orderBy: { invitedAt: 'desc' },
     });
+    return users.map(user => this.sanitizeUser(user));
   }
 
   // Invite team member
@@ -78,7 +85,7 @@ export class UsersService {
     const inviteLink = `${process.env.CLIENT_URL || 'http://localhost:5173'}/accept-invite?token=${inviteToken}`;
 
     return {
-      user,
+      user: this.sanitizeUser(user),
       inviteToken,
       inviteLink,
       message: `Invitation generated for ${user.email}. Send link to set password.`,
@@ -179,11 +186,12 @@ export class UsersService {
       }
     }
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: { roleId: newRole.id },
       include: { role: true },
     });
+    return this.sanitizeUser(updatedUser);
   }
 
   // Suspend / reactivate member
@@ -201,11 +209,12 @@ export class UsersService {
     const newStatus =
       (user.status as string) === 'SUSPENDED' ? ('ACTIVE' as any) : ('SUSPENDED' as any);
 
-    return this.prisma.user.update({
+    const updatedUser = await this.prisma.user.update({
       where: { id },
       data: { status: newStatus },
       include: { role: true },
     });
+    return this.sanitizeUser(updatedUser);
   }
 
   // Delete user (disallows deleting last Owner)
@@ -229,7 +238,8 @@ export class UsersService {
       }
     }
 
-    return this.prisma.user.delete({ where: { id } });
+    const deletedUser = await this.prisma.user.delete({ where: { id } });
+    return this.sanitizeUser(deletedUser);
   }
 }
 
@@ -295,9 +305,12 @@ export class UsersController {
 
 @Module({
   imports: [
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'rentease_super_secret_jwt_key_2026_qatar_saas',
-      signOptions: { expiresIn: '7d' },
+    JwtModule.registerAsync({
+      useFactory: () => {
+        const secret = process.env.JWT_SECRET;
+        if (!secret) throw new Error('FATAL: JWT_SECRET not set.');
+        return { secret, signOptions: { expiresIn: '7d' } };
+      },
     }),
   ],
   controllers: [UsersController],

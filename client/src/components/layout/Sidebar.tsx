@@ -110,22 +110,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       )}
 
-      {/* Spacer for collapsed hover mode */}
-      <div
-        className={`hidden md:block shrink-0 transition-all duration-300 ${
-          mode === 'collapsed' ? 'w-[68px]' : 'hidden'
-        }`}
-      />
+      {/* Spacer div when absolutely positioned in collapsed hover state (desktop only) */}
+      <div className={`hidden md:block ${mode === 'collapsed' ? 'w-[72px] min-w-[72px] shrink-0' : 'hidden'}`} />
 
       <aside
-        className={`${isCollapsed ? 'w-[68px]' : 'w-[240px]'} min-w-[68px] h-screen flex flex-col
-          bg-maroon-900 text-white z-40 select-none
-          border-r border-gold-500/20 rtl:border-r-0 rtl:border-l rtl:border-gold-500/20
-          transition-[width] duration-300 ease-in-out
-          fixed top-0 left-0 md:sticky
-          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
-          ${mode === 'collapsed' ? 'md:fixed md:shadow-2xl' : ''}
-        `}
+        className={`${
+          isCollapsed ? 'w-[72px]' : 'w-[248px]'
+        } min-w-[72px] h-screen flex flex-col justify-between bg-maroon-900 text-white z-40 select-none border-r border-gold-500/30 rtl:border-r-0 rtl:border-l rtl:border-gold-500/30 transition-all duration-300 ease-in-out
+        fixed top-0 left-0 ${mode === 'collapsed' ? 'md:fixed md:shadow-2xl' : 'md:sticky'} ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+        style={{
+          boxShadow: 'inset -1px 0 0 0 rgba(185, 146, 74, 0.25)',
+        }}
         onMouseEnter={() => (mode === 'collapsed' || isManuallyCollapsed) && setIsHoverExpanded(true)}
         onMouseLeave={() => (mode === 'collapsed' || isManuallyCollapsed) && setIsHoverExpanded(false)}
       >

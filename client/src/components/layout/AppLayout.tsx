@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import Sidebar from './Sidebar.js';
 import {
@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   Menu,
   X,
+  Zap,
 } from 'lucide-react';
 import api from '../../lib/api';
 
@@ -19,6 +20,7 @@ export const AppLayout: React.FC = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isQuickMenuOpen, setIsQuickMenuOpen] = useState(false);
   const [quickSearch, setQuickSearch] = useState('');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -28,7 +30,7 @@ export const AppLayout: React.FC = () => {
     queryKey: ['notifications-live'],
     queryFn: async () => {
       try {
-        const res = await api.get('/supporting/notifications');
+        const res = await api.get('/notifications?unread=true');
         return res.data;
       } catch {
         return { data: [], unreadCount: 0 };
@@ -108,11 +110,52 @@ export const AppLayout: React.FC = () => {
               />
             </div>
 
+            {/* Quick Links Popover */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsQuickMenuOpen(!isQuickMenuOpen);
+                  setIsNotificationsOpen(false);
+                }}
+                className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-sand-100 text-ink-600 hover:text-ink-900 transition-colors"
+                title="Quick Links"
+              >
+                <Zap size={16} />
+              </button>
+
+              {isQuickMenuOpen && (
+                <div className="absolute right-0 rtl:right-auto rtl:left-0 mt-2 w-64 bg-white rounded-xl shadow-2xl border border-line z-50 overflow-hidden animate-fade-in">
+                  <div className="p-3.5 bg-maroon-900 text-white flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Zap size={15} className="text-gold-300" />
+                      <span className="font-semibold text-xs">All Pages</span>
+                    </div>
+                  </div>
+                  <div className="max-h-80 overflow-y-auto divide-y divide-line text-xs flex flex-col p-2">
+                    <Link to="/" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Dashboard</Link>
+                    <Link to="/properties" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Properties</Link>
+                    <Link to="/tenants" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Tenants</Link>
+                    <Link to="/leases" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Leases & Renewals</Link>
+                    <Link to="/payments" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Payments</Link>
+                    <Link to="/expenses" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Expenses & Opex</Link>
+                    <Link to="/maintenance" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Maintenance</Link>
+                    <Link to="/vendors" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Vendors</Link>
+                    <Link to="/reports" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Reports</Link>
+                    <Link to="/settings/integrations" onClick={() => setIsQuickMenuOpen(false)} className="px-3 py-2 hover:bg-sand-050 rounded transition-colors font-medium text-ink-900">Settings</Link>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Notifications */}
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
+                onClick={() => {
+                  setIsNotificationsOpen(!isNotificationsOpen);
+                  setIsQuickMenuOpen(false);
+                }}
                 className="relative w-8 h-8 flex items-center justify-center rounded-lg hover:bg-sand-100 text-ink-600 hover:text-ink-900 transition-colors"
                 title="Notifications"
               >

@@ -23,6 +23,63 @@ export const LeasesView: React.FC = () => {
   const [proposedEndDate, setProposedEndDate] = useState<string>('');
   const [leaseToTerminate, setLeaseToTerminate] = useState<Lease | null>(null);
 
+  // New Lease Modal State
+  const [isNewLeaseModalOpen, setIsNewLeaseModalOpen] = useState(false);
+  const [newLeaseForm, setNewLeaseForm] = useState({
+    tenantId: '',
+    unitId: '',
+    startDate: '',
+    endDate: '',
+    rentAmount: ''
+  });
+
+  // Queries for form options
+  const { data: tenantsData } = useQuery({
+    queryKey: ['tenants', 'all'],
+    queryFn: async () => {
+      const res = await api.get('/tenants?limit=100');
+      return res.data;
+    },
+    enabled: isNewLeaseModalOpen,
+  });
+
+  const { data: unitsData } = useQuery({
+    queryKey: ['units', 'vacant'],
+    queryFn: async () => {
+      const res = await api.get('/properties/units/all?status=VACANT&limit=100');
+      return res.data;
+    },
+    enabled: isNewLeaseModalOpen,
+  });
+
+  // Mutation to create lease
+  const createLeaseMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return api.post('/leases', data);
+    },
+    onSuccess: () => {
+      toast.success('Lease created successfully');
+      queryClient.invalidateQueries({ queryKey: ['leases'] });
+      queryClient.invalidateQueries({ queryKey: ['units'] });
+      setIsNewLeaseModalOpen(false);
+      setNewLeaseForm({ tenantId: '', unitId: '', startDate: '', endDate: '', rentAmount: '' });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Failed to create lease');
+    }
+  });
+
+  const handleCreateLeaseSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createLeaseMutation.mutate({
+      tenantId: newLeaseForm.tenantId,
+      unitId: newLeaseForm.unitId,
+      startDate: newLeaseForm.startDate,
+      endDate: newLeaseForm.endDate,
+      rentAmount: Number(newLeaseForm.rentAmount)
+    });
+  };
+
   // Fetch Leases with server-side query contract
   const { data, isLoading } = useQuery<PaginatedResponse<Lease>>({
     queryKey: ['leases', search, statusFilter, page, sort],
@@ -238,9 +295,7 @@ export const LeasesView: React.FC = () => {
           <PermissionGate module="leases" action="create">
             <Button
               variant="primary"
-              onClick={() => {
-                toast.success('New Lease flow placeholder');
-              }}
+              onClick={() => setIsNewLeaseModalOpen(true)}
             >
               <span>New Lease</span>
             </Button>
@@ -277,7 +332,7 @@ export const LeasesView: React.FC = () => {
             </p>
             <Button
               variant="primary"
-              onClick={() => toast.success('New Lease flow placeholder')}
+              onClick={() => setIsNewLeaseModalOpen(true)}
               className="mt-4"
             >
               <span>Create Lease</span>
@@ -365,6 +420,109 @@ export const LeasesView: React.FC = () => {
                   isLoading={proposeMutation.isPending}
                 >
                   Submit Proposal
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: New Lease */}
+      {isNewLeaseModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-[6px] border border-[#E4DCCB] shadow-2xl max-w-md w-full flex flex-col max-h-[90dvh] overflow-hidden p-6 animate-in fade-in-50 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-[#E4DCCB] shrink-0">
+              <h3 className="text-base font-bold text-[#221E1C] flex items-center gap-2">
+                New Lease Contract
+              </h3>
+              <Button
+                variant="icon"
+                onClick={() => setIsNewLeaseModalOpen(false)}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            <form onSubmit={handleCreateLeaseSubmit} className="space-y-4 pt-4 text-xs flex-1 overflow-y-auto min-h-0 pr-2">
+              <div>
+                <label className="block font-semibold text-[#221E1C] mb-1">Select Tenant</label>
+                <select
+                  required
+                  value={newLeaseForm.tenantId}
+                  onChange={(e) => setNewLeaseForm({ ...newLeaseForm, tenantId: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-[#E4DCCB] rounded-[4px] focus:outline-none focus:border-[#6E1731]"
+                >
+                  <option value="" disabled>Choose a tenant...</option>
+                  {tenantsData?.data?.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name} ({t.phone})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#221E1C] mb-1">Select Available Unit</label>
+                <select
+                  required
+                  value={newLeaseForm.unitId}
+                  onChange={(e) => setNewLeaseForm({ ...newLeaseForm, unitId: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-[#E4DCCB] rounded-[4px] focus:outline-none focus:border-[#6E1731]"
+                >
+                  <option value="" disabled>Choose a unit...</option>
+                  {unitsData?.data?.map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.unitNumber} - {u.propertyName}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-[#221E1C] mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newLeaseForm.startDate}
+                    onChange={(e) => setNewLeaseForm({ ...newLeaseForm, startDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#E4DCCB] rounded-[4px] focus:outline-none focus:border-[#6E1731]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#221E1C] mb-1">End Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={newLeaseForm.endDate}
+                    onChange={(e) => setNewLeaseForm({ ...newLeaseForm, endDate: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-[#E4DCCB] rounded-[4px] focus:outline-none focus:border-[#6E1731]"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-[#221E1C] mb-1">Monthly Rent (QAR)</label>
+                <input
+                  type="number"
+                  required
+                  min={1000}
+                  value={newLeaseForm.rentAmount}
+                  onChange={(e) => setNewLeaseForm({ ...newLeaseForm, rentAmount: e.target.value })}
+                  className="w-full px-3 py-2 bg-white border border-[#E4DCCB] rounded-[4px] focus:outline-none focus:border-[#6E1731] font-mono text-sm"
+                  placeholder="e.g. 5000"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-[#E4DCCB]">
+                <Button
+                  variant="secondary"
+                  onClick={() => setIsNewLeaseModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  isLoading={createLeaseMutation.isPending}
+                >
+                  Create Lease
                 </Button>
               </div>
             </form>

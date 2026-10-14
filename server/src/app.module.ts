@@ -38,7 +38,7 @@ import { RedisModule } from './redis/redis.module.js';
       {
         name: 'global',
         ttl: 60000,  // 60 seconds
-        limit: 100,
+        limit: 1000,
       },
       {
         name: 'auth',
@@ -50,6 +50,7 @@ import { RedisModule } from './redis/redis.module.js';
       connection: {
         host: process.env.REDIS_HOST || 'localhost',
         port: Number(process.env.REDIS_PORT) || 6379,
+        skipVersionCheck: true,
       },
     }),
     RedisModule,

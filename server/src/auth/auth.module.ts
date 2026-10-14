@@ -41,9 +41,6 @@ export class LoginDto {
   email: string;
 
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters.' })
-  @MaxLength(128)
-  @Matches(/((?=.*\d)|(?=.*\W+))(?![.\n])(?=.*[A-Z])(?=.*[a-z]).*$/, { message: 'Password must contain uppercase, lowercase, and numbers/symbols' })
   password: string;
 }
 
